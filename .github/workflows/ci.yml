@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  ci:
+    name: Run Checks and Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        python-version: "3.14"
+        enable-cache: true
+
+    - name: Sync dependencies
+      run: uv sync
+
+    - name: Run Ruff Format Check
+      run: uv run ruff format --check .
+
+    - name: Run Ruff Linter
+      run: uv run ruff check .
+
+    - name: Run mypy Type Checker
+      run: uv run mypy .
+
+    - name: Run Tests with Branch Coverage
+      run: uv run pytest -v --cov=. --cov-branch --cov-report=term-missing --cov-fail-under=80
