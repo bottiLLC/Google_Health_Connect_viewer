@@ -456,6 +456,7 @@ class HealthConnectAnalyticsService:
         df = self._engine.execute_query(query, params)
         if not df.empty:
             df["datetime"] = df["time"].apply(self._engine.epoch_millis_to_dt)
+            df["is_low_event"] = df["is_low_event"].astype(bool)
         return df
 
     def get_read_access_audit_logs(self, limit: int = 500) -> list[ReadAccessLogItem]:

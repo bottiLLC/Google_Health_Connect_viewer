@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ast
 import datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from domain_models import (
     ColumnMeta,
@@ -164,3 +167,44 @@ def test_render_backup_sidebar_triggers() -> None:
         ),
     ):
         render_backup_sidebar()
+
+
+def test_app_plotly_charts_have_unique_keys() -> None:
+    """Verify that all st.plotly_chart calls in app.py specify explicit and unique key arguments."""
+    app_path = Path(__file__).resolve().parent.parent / "app.py"
+    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+
+    keys: list[str] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "plotly_chart"
+        ):
+            key_kw = next((kw for kw in node.keywords if kw.arg == "key"), None)
+            assert key_kw is not None, (
+                f"st.plotly_chart at line {node.lineno} is missing a key argument"
+            )
+            assert isinstance(key_kw.value, ast.Constant), (
+                f"key at line {node.lineno} must be a literal constant"
+            )
+            key_val = str(key_kw.value.value)
+            keys.append(key_val)
+
+    assert len(keys) > 0, "No st.plotly_chart calls found in app.py"
+    assert len(keys) == len(set(keys)), f"Duplicate keys found in st.plotly_chart calls: {keys}"
+
+
+def test_app_smoke_with_live_db_if_available() -> None:
+    """Verify app.py renders cleanly without Streamlit exceptions when live database is present."""
+    live_db = Path(__file__).resolve().parent.parent / "data" / "health_connect_export.db"
+    if not live_db.exists():
+        pytest.skip("Live database not available for AppTest")
+
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(
+        str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
+    )
+    at.run()
+    assert not at.exception

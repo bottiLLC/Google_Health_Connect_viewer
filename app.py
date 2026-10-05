@@ -170,7 +170,11 @@ def main() -> None:
             sleep_min = sleep_sess[0].total_duration_minutes if sleep_sess else 0
             st.metric("直近睡眠時間", f"{int(sleep_min // 60)}時間 {int(sleep_min % 60)}分")
 
-        st.plotly_chart(build_activity_composite_chart(daily_acts), use_container_width=True)
+        st.plotly_chart(
+            build_activity_composite_chart(daily_acts),
+            use_container_width=True,
+            key="overview_activity_composite_chart",
+        )
 
     # ==========================================
     # Tab 2: アクティビティ
@@ -178,8 +182,16 @@ def main() -> None:
     with tabs[1]:
         st.subheader("🏃 アクティビティ・運動セッション")
         daily_acts = analytics.get_daily_activity_summary(filter_params)
-        st.plotly_chart(build_activity_composite_chart(daily_acts), use_container_width=True)
-        st.plotly_chart(build_calories_chart(daily_acts), use_container_width=True)
+        st.plotly_chart(
+            build_activity_composite_chart(daily_acts),
+            use_container_width=True,
+            key="activity_composite_chart",
+        )
+        st.plotly_chart(
+            build_calories_chart(daily_acts),
+            use_container_width=True,
+            key="activity_calories_chart",
+        )
 
         st.divider()
         st.subheader("🗺️ ワークアウトセッション & GPS ルート")
@@ -222,7 +234,11 @@ def main() -> None:
         if df_body.empty:
             st.info("対象期間内の身体測定データ（体重・体脂肪率）はありません。")
         else:
-            st.plotly_chart(build_body_measurement_chart(df_body), use_container_width=True)
+            st.plotly_chart(
+                build_body_measurement_chart(df_body),
+                use_container_width=True,
+                key="body_measurement_chart",
+            )
             st.subheader("測定レコード一覧")
             disp_df = df_body.copy()
             if "datetime" in disp_df.columns:
@@ -247,7 +263,11 @@ def main() -> None:
             )
             cur_sleep = next(s for s in sleep_sessions if s.row_id == s_id)
 
-            st.plotly_chart(build_sleep_stages_chart(cur_sleep.stages), use_container_width=True)
+            st.plotly_chart(
+                build_sleep_stages_chart(cur_sleep.stages),
+                use_container_width=True,
+                key="sleep_stages_chart",
+            )
 
             stage_summary = [
                 {
@@ -270,12 +290,20 @@ def main() -> None:
 
         col_v1, col_v2 = st.columns(2)
         with col_v1:
-            st.plotly_chart(build_heart_rate_chart(df_hr), use_container_width=True)
+            st.plotly_chart(
+                build_heart_rate_chart(df_hr),
+                use_container_width=True,
+                key="heart_rate_chart",
+            )
         with col_v2:
-            st.plotly_chart(build_oxygen_saturation_chart(df_o2), use_container_width=True)
+            st.plotly_chart(
+                build_oxygen_saturation_chart(df_o2),
+                use_container_width=True,
+                key="oxygen_saturation_chart",
+            )
 
-        if not df_o2.empty:
-            low_events = df_o2[df_o2["is_low_event"]].copy()
+        if not df_o2.empty and "is_low_event" in df_o2.columns:
+            low_events = df_o2[df_o2["is_low_event"].astype(bool)].copy()
             if not low_events.empty:
                 st.warning(f"⚠️ SpO2 低下イベント (< 95%): {len(low_events)} 件検出")
                 if "datetime" in low_events.columns:
