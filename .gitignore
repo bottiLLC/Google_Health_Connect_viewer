@@ -1,35 +1,56 @@
-# Byte-compiled / optimized / DLL files
+# ==============================================================================
+# Whitelist-based .gitignore for Public Repository
+# Strictly permits only necessary application source files, tests, and CI config
+# All runtime data, databases, virtual environments, and caches are ignored
+# ==============================================================================
+
+# 1. Deny everything by default (files and dotfiles)
+*
+.*
+
+# 2. Allow directory traversal (directories must be unignored to inspect contents)
+!*/
+
+# 3. Repository Configuration & Metadata
+!.gitignore
+!.gitattributes
+!pyproject.toml
+!uv.lock
+!README.md
+
+# 4. Mandatory Launcher Scripts
+!run.bat
+!run.command
+
+# 5. Core Application Modules
+!app.py
+!domain_models.py
+!db_engine.py
+!analytics_service.py
+!ui_components.py
+!backup_manager.py
+
+# 6. CI Pipeline Workflows
+!.github/
+!.github/**
+
+# 7. Automated Test Suite
+!tests/
+!tests/**
+
+# 8. Data Directory Skeleton (Only .gitkeep permitted, all databases ignored)
+!data/
+!data/.gitkeep
+data/*
+!data/.gitkeep
+
+# 9. Defense-in-depth: Explicitly re-assert prohibition of sensitive/ephemeral paths
+backups/
+.venv/
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Virtual Environments
-.venv/
-env/
-venv/
-ENV/
-
-# Testing and Coverage
 .pytest_cache/
-.coverage
-.coverage.*
-htmlcov/
-
-# Type Checking & Linting
+.coverage*
 .mypy_cache/
 .ruff_cache/
-
-# Backups
-backups/
-
-# Database files
-data/*.db
-data/*.sqlite
-data/*.sqlite3
-
-# Streamlit Local state
 .streamlit/
-
-# OS specific
-Thumbs.db
-.DS_Store
