@@ -318,7 +318,7 @@ class HealthConnectAnalyticsService:
         query_b = f"""
             SELECT
                 time,
-                bmr AS bmr_kcal
+                round(basal_metabolic_rate * 86400.0 / 4184.0, 1) AS bmr_kcal
             FROM basal_metabolic_rate_record_table
             WHERE time IS NOT NULL {where_w}
             ORDER BY time ASC;

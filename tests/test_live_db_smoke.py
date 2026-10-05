@@ -45,3 +45,12 @@ def test_live_database_smoke() -> None:
 
     hr_df = analytics.get_heart_rate_summary_df(DashboardFilterParams())
     assert not hr_df.empty
+
+    # 6. Body measurements (including basal_metabolic_rate)
+    body_df = analytics.get_body_measurements_df(DashboardFilterParams())
+    assert not body_df.empty
+    assert "bmr_kcal" in body_df.columns
+
+    # 7. Exercise sessions
+    exercise_sessions = analytics.get_exercise_sessions(DashboardFilterParams())
+    assert len(exercise_sessions) > 0

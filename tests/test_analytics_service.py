@@ -83,7 +83,7 @@ def analytics_mock_db(tmp_path: Path) -> Path:
     cur.execute("""
         CREATE TABLE basal_metabolic_rate_record_table (
             row_id INTEGER PRIMARY KEY,
-            bmr REAL,
+            basal_metabolic_rate REAL,
             time INTEGER
         );
     """)
@@ -166,7 +166,7 @@ def analytics_mock_db(tmp_path: Path) -> Path:
         "INSERT INTO weight_record_table VALUES (1, 65000.0, 1750000000000, 1, 1);"
     )  # 65.0 kg
     cur.execute("INSERT INTO body_fat_record_table VALUES (1, 18.5, 1750000000000);")
-    cur.execute("INSERT INTO basal_metabolic_rate_record_table VALUES (1, 1550.0, 1750000000000);")
+    cur.execute("INSERT INTO basal_metabolic_rate_record_table VALUES (1, 75.0, 1750000000000);")
 
     # Sleep
     cur.execute(
@@ -245,7 +245,7 @@ def test_get_body_measurements_df(analytics_mock_db: Path) -> None:
     assert not df.empty
     assert df["weight_kg"].iloc[0] == 65.0
     assert df["body_fat_pct"].iloc[0] == 18.5
-    assert df["bmr_kcal"].iloc[0] == 1550.0
+    assert df["bmr_kcal"].iloc[0] == 1548.8
 
 
 def test_get_sleep_sessions(analytics_mock_db: Path) -> None:
