@@ -327,12 +327,24 @@ def build_heart_rate_chart(df: pd.DataFrame) -> go.Figure:
     )
 
     fig.update_layout(
-        title="日次平均心拍数と変動幅 (bpm)",
+        title={
+            "text": "日次平均心拍数と変動幅 (bpm)",
+            "y": 0.98,
+            "x": 0.0,
+            "xanchor": "left",
+            "yanchor": "top",
+        },
         xaxis={"title": "日付", "tickangle": -45},
         yaxis={"title": "心拍数 (bpm)"},
         hovermode="x unified",
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
-        margin={"l": 40, "r": 40, "t": 60, "b": 60},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "left",
+            "x": 0.0,
+        },
+        margin={"l": 40, "r": 40, "t": 80, "b": 60},
         template="plotly_dark",
     )
     return fig

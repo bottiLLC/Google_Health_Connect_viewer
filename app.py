@@ -10,6 +10,8 @@ _ROOT = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+import datetime
+
 import pandas as pd
 import streamlit as st
 
@@ -17,12 +19,14 @@ from analytics_service import HealthConnectAnalyticsService
 from db_engine import DatabaseConnectionError, HealthConnectDbEngine
 from domain_models import (
     DEFAULT_VISIBLE_TABS,
+    PERIOD_PRESETS,
     SUMMARY_ITEMS_LABEL_MAP,
     DashboardFilterParams,
     DashboardSettings,
     HealthDomainCategory,
     SummaryItemKey,
     TableCatalogMeta,
+    resolve_filter_date_range,
 )
 from settings_manager import (
     load_dashboard_settings,
@@ -166,21 +170,134 @@ def main() -> None:
         st.info(f"📂 **DBファイル**: `{db_file.name}` ({db_size_mb:.1f} MB)")
 
         earliest_d, latest_d = analytics.get_database_date_range()
-        selected_start_d, selected_end_d = None, None
+        selected_start_d: datetime.date | None = None
+        selected_end_d: datetime.date | None = None
 
-        if earliest_d and latest_d:
-            st.subheader("📅 集計対象期間")
-            date_range = st.date_input(
-                "日付範囲を選択",
-                value=(earliest_d, latest_d),
-                min_value=earliest_d,
-                max_value=latest_d,
+        st.subheader("📅 集計対象期間")
+        today_d = datetime.date.today()
+        default_anchor = latest_d if latest_d else today_d
+
+        selected_preset = st.selectbox(
+            "期間プリセット",
+            options=list(PERIOD_PRESETS),
+            index=0,  # "1か月"
+            key="filter_period_preset",
+        )
+
+        custom_y: int | None = None
+        custom_m: int | None = None
+        custom_ey: int | None = None
+        custom_em: int | None = None
+
+        if selected_preset == "年月指定":
+            anchor_year = default_anchor.year
+            anchor_month = default_anchor.month
+
+            is_single_month = st.checkbox(
+                "単一月のみ指定",
+                value=True,
+                key="filter_is_single_month",
             )
-            if isinstance(date_range, (tuple, list)):
-                if len(date_range) == 2:
-                    selected_start_d, selected_end_d = date_range[0], date_range[1]
-                elif len(date_range) == 1:
-                    selected_start_d = date_range[0]
+
+            # 選択可能な年リスト (最新データ/本日+1年から最古データ年または2015年まで)
+            min_y = min(2015, earliest_d.year if earliest_d else 2020)
+            max_y = max(today_d.year + 1, (latest_d.year + 1) if latest_d else 2030)
+            years_list = list(range(max_y, min_y - 1, -1))
+            default_y_idx = years_list.index(anchor_year) if anchor_year in years_list else 0
+
+            if is_single_month:
+                col_y, col_m = st.columns(2)
+                with col_y:
+                    custom_y = st.selectbox(
+                        "対象年",
+                        options=years_list,
+                        index=default_y_idx,
+                        key="filter_single_year",
+                    )
+                with col_m:
+                    custom_m = st.selectbox(
+                        "対象月",
+                        options=list(range(1, 13)),
+                        index=anchor_month - 1,
+                        format_func=lambda m: f"{m}月",
+                        key="filter_single_month",
+                    )
+            else:
+                col_sy, col_sm = st.columns(2)
+                with col_sy:
+                    custom_y = st.selectbox(
+                        "開始年",
+                        options=years_list,
+                        index=default_y_idx,
+                        key="filter_start_year",
+                    )
+                with col_sm:
+                    custom_m = st.selectbox(
+                        "開始月",
+                        options=list(range(1, 13)),
+                        index=0,
+                        format_func=lambda m: f"{m}月",
+                        key="filter_start_month",
+                    )
+
+                col_ey, col_em = st.columns(2)
+                with col_ey:
+                    custom_end_idx = (
+                        years_list.index(anchor_year) if anchor_year in years_list else 0
+                    )
+                    custom_ey = st.selectbox(
+                        "終了年",
+                        options=years_list,
+                        index=custom_end_idx,
+                        key="filter_end_year",
+                    )
+                with col_em:
+                    custom_em = st.selectbox(
+                        "終了月",
+                        options=list(range(1, 13)),
+                        index=anchor_month - 1,
+                        format_func=lambda m: f"{m}月",
+                        key="filter_end_month",
+                    )
+
+            chosen_anchor = default_anchor
+        elif selected_preset != "全期間":
+            if latest_d and today_d > latest_d:
+                anchor_choice = st.radio(
+                    "基準日",
+                    options=["最新データ日", "本日"],
+                    format_func=lambda c: (
+                        f"最新データ ({latest_d})" if c == "最新データ日" else f"本日 ({today_d})"
+                    ),
+                    index=0,
+                    horizontal=True,
+                    key="filter_anchor_choice",
+                )
+                chosen_anchor = latest_d if anchor_choice == "最新データ日" else today_d
+            else:
+                chosen_anchor = default_anchor
+        else:
+            chosen_anchor = default_anchor
+
+        selected_start_d, selected_end_d = resolve_filter_date_range(
+            selected_preset,
+            chosen_anchor,
+            custom_year=custom_y,
+            custom_month=custom_m,
+            custom_end_year=custom_ey,
+            custom_end_month=custom_em,
+        )
+
+        if selected_start_d and selected_end_d:
+            st.caption(f"📅 **適用期間**: `{selected_start_d}` 〜 `{selected_end_d}`")
+            if (
+                earliest_d
+                and latest_d
+                and (selected_start_d < earliest_d or selected_end_d > latest_d)
+            ):
+                st.caption("ℹ️ DB記録期間外が含まれています。期間内の実データを表示します。")
+        elif selected_preset == "全期間":
+            st.caption(f"📅 **全期間**: `{earliest_d or '---'}` 〜 `{latest_d or '---'}`")
 
         # Applications & Devices filter
         apps = analytics.get_apps_list()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import datetime
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
@@ -73,6 +74,96 @@ class DashboardFilterParams(BaseModel):
     end_date: datetime.date | None = None
     selected_app_ids: Sequence[int] = Field(default_factory=tuple)
     selected_device_ids: Sequence[int] = Field(default_factory=tuple)
+
+
+PERIOD_PRESETS: Final[tuple[str, ...]] = (
+    "1か月",
+    "3か月",
+    "6か月",
+    "1年",
+    "3年",
+    "5年",
+    "全期間",
+    "年月指定",
+)
+
+
+def _subtract_months(d: datetime.date, months: int) -> datetime.date:
+    """減算後の年月と末日クランプを考慮して月数を減算する。"""
+    total_months = d.year * 12 + (d.month - 1) - months
+    year = total_months // 12
+    month = (total_months % 12) + 1
+    max_day = calendar.monthrange(year, month)[1]
+    return datetime.date(year, month, min(d.day, max_day))
+
+
+def _subtract_years(d: datetime.date, years: int) -> datetime.date:
+    """閏年クランプを考慮して年数を減算する。"""
+    year = d.year - years
+    max_day = calendar.monthrange(year, d.month)[1]
+    return datetime.date(year, d.month, min(d.day, max_day))
+
+
+def resolve_filter_date_range(
+    preset: str,
+    anchor_date: datetime.date,
+    *,
+    custom_year: int | None = None,
+    custom_month: int | None = None,
+    custom_end_year: int | None = None,
+    custom_end_month: int | None = None,
+) -> tuple[datetime.date | None, datetime.date | None]:
+    """選択されたプリセットまたは年月指定に基づき集計対象期間を算出する。
+
+    データ範囲外の日付も許容し、DB側SQL抽出で安全に実データを抽出可能とする。
+
+    Args:
+        preset: 選択された期間プリセット (PERIOD_PRESETS のいずれか)。
+        anchor_date: 基準日 (最新データ日または本日)。
+        custom_year: 年月指定時の開始年。
+        custom_month: 年月指定時の開始月 (1〜12)。
+        custom_end_year: 年月指定時の終了年 (省略時は custom_year)。
+        custom_end_month: 年月指定時の終了月 (省略時は custom_month)。
+
+    Returns:
+        (start_date, end_date) のタプル。全期間の場合は (None, None)。
+    """
+    if preset == "全期間":
+        return None, None
+
+    if preset == "1か月":
+        return _subtract_months(anchor_date, 1), anchor_date
+
+    if preset == "3か月":
+        return _subtract_months(anchor_date, 3), anchor_date
+
+    if preset == "6か月":
+        return _subtract_months(anchor_date, 6), anchor_date
+
+    if preset == "1年":
+        return _subtract_years(anchor_date, 1), anchor_date
+
+    if preset == "3年":
+        return _subtract_years(anchor_date, 3), anchor_date
+
+    if preset == "5年":
+        return _subtract_years(anchor_date, 5), anchor_date
+
+    if preset == "年月指定":
+        sy = custom_year if custom_year is not None else anchor_date.year
+        sm = custom_month if custom_month is not None else anchor_date.month
+        ey = custom_end_year if custom_end_year is not None else sy
+        em = custom_end_month if custom_end_month is not None else sm
+
+        if (sy, sm) > (ey, em):
+            sy, sm, ey, em = ey, em, sy, sm
+
+        start_d = datetime.date(sy, sm, 1)
+        last_day = calendar.monthrange(ey, em)[1]
+        end_d = datetime.date(ey, em, last_day)
+        return start_d, end_d
+
+    return None, None
 
 
 class DailyActivitySummary(BaseModel):

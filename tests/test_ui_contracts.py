@@ -134,6 +134,11 @@ def test_build_heart_rate_and_oxygen_saturation_charts() -> None:
     )
     fig_hr = build_heart_rate_chart(df_hr)
     assert len(fig_hr.data) == 3
+    # Verify non-colliding layout invariants
+    assert fig_hr.layout.legend.xanchor == "left"
+    assert fig_hr.layout.legend.x == 0.0
+    assert fig_hr.layout.title.xanchor == "left"
+    assert fig_hr.layout.margin.t >= 80
 
     df_o2 = pd.DataFrame(
         [
