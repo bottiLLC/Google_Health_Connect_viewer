@@ -95,6 +95,61 @@ def main() -> None:
         st.session_state["dashboard_settings"] = load_dashboard_settings()
     settings: DashboardSettings = st.session_state["dashboard_settings"]
 
+    def _apply_all_tabs_preset() -> None:
+        """Apply all tabs visible preset."""
+        cur = st.session_state.get("dashboard_settings", DashboardSettings())
+        new_settings = DashboardSettings(
+            visible_tabs=list(DEFAULT_VISIBLE_TABS),
+            visible_summary_items=cur.visible_summary_items,
+        )
+        save_dashboard_settings(new_settings)
+        st.session_state["dashboard_settings"] = new_settings
+        st.session_state["settings_tabs_multiselect"] = list(DEFAULT_VISIBLE_TABS)
+        st.session_state["settings_flash_message"] = ("✅ 全タブを表示に設定しました。", False)
+
+    def _apply_minimal_tabs_preset() -> None:
+        """Apply minimal dashboard preset (Summary, Sleep, Vitals)."""
+        cur = st.session_state.get("dashboard_settings", DashboardSettings())
+        min_tabs = ["📊 サマリー", "😴 睡眠", "❤️ バイタル"]
+        new_settings = DashboardSettings(
+            visible_tabs=min_tabs,
+            visible_summary_items=cur.visible_summary_items,
+        )
+        save_dashboard_settings(new_settings)
+        st.session_state["dashboard_settings"] = new_settings
+        st.session_state["settings_tabs_multiselect"] = min_tabs
+        st.session_state["settings_flash_message"] = (
+            "✅ 最小構成 (サマリー・睡眠・バイタル) に設定しました。",
+            False,
+        )
+
+    def _save_and_apply_settings() -> None:
+        """Save and persist current settings selections."""
+        tabs = st.session_state.get("settings_tabs_multiselect", list(DEFAULT_VISIBLE_TABS))
+        summary_items = st.session_state.get(
+            "settings_summary_items_multiselect", [k.value for k in SummaryItemKey]
+        )
+        saved = DashboardSettings(
+            visible_tabs=list(tabs),
+            visible_summary_items=list(summary_items),
+        )
+        if save_dashboard_settings(saved):
+            st.session_state["dashboard_settings"] = saved
+            st.session_state["settings_flash_message"] = (
+                f"✅ 設定を保存して適用しました。(表示タブ: {len(saved.visible_tabs)}件, サマリー項目: {len(saved.visible_summary_items)}件)",
+                False,
+            )
+        else:
+            st.session_state["settings_flash_message"] = ("❌ 設定の保存に失敗しました。", True)
+
+    def _reset_to_default_settings() -> None:
+        """Reset dashboard settings to original defaults."""
+        default_settings = reset_dashboard_settings()
+        st.session_state["dashboard_settings"] = default_settings
+        st.session_state["settings_tabs_multiselect"] = list(DEFAULT_VISIBLE_TABS)
+        st.session_state["settings_summary_items_multiselect"] = [k.value for k in SummaryItemKey]
+        st.session_state["settings_flash_message"] = ("✅ 設定を初期値にリセットしました。", False)
+
     # 2. Sidebar configuration, mode selection, and filters
     with st.sidebar:
         st.header("🧭 画面切替 & 表示設定")
@@ -104,22 +159,6 @@ def main() -> None:
             index=0,
             key="app_view_mode",
         )
-
-        with st.expander("📑 表示タブ クイック切替", expanded=False):
-            sidebar_selected_tabs = st.multiselect(
-                "表示するタブ",
-                options=list(DEFAULT_VISIBLE_TABS),
-                default=[t for t in settings.visible_tabs if t in DEFAULT_VISIBLE_TABS],
-                key="sidebar_tabs_multiselect",
-            )
-            if sidebar_selected_tabs != settings.visible_tabs:
-                new_settings = DashboardSettings(
-                    visible_tabs=sidebar_selected_tabs,
-                    visible_summary_items=settings.visible_summary_items,
-                )
-                save_dashboard_settings(new_settings)
-                st.session_state["dashboard_settings"] = new_settings
-                st.rerun()
 
         st.divider()
         st.header("⚙️ データベース概要 & フィルタ")
@@ -168,8 +207,15 @@ def main() -> None:
         st.header("⚙️ ダッシュボード表示設定")
         st.caption("タブの表示/非表示およびサマリー画面の表示項目をカスタマイズして永続化します。")
 
+        if "settings_flash_message" in st.session_state:
+            msg_text, is_err = st.session_state.pop("settings_flash_message")
+            if is_err:
+                st.error(msg_text)
+            else:
+                st.success(msg_text)
+
         st.subheader("1. タブ単位の表示・非表示")
-        selected_tabs = st.multiselect(
+        st.multiselect(
             "ダッシュボードに表示するタブを選択してください",
             options=list(DEFAULT_VISIBLE_TABS),
             default=[t for t in settings.visible_tabs if t in DEFAULT_VISIBLE_TABS],
@@ -178,30 +224,24 @@ def main() -> None:
 
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
-            if st.button("全タブを表示", use_container_width=True):
-                new_settings = DashboardSettings(
-                    visible_tabs=list(DEFAULT_VISIBLE_TABS),
-                    visible_summary_items=settings.visible_summary_items,
-                )
-                save_dashboard_settings(new_settings)
-                st.session_state["dashboard_settings"] = new_settings
-                st.rerun()
+            st.button(
+                "全タブを表示",
+                use_container_width=True,
+                on_click=_apply_all_tabs_preset,
+            )
         with col_btn2:
-            if st.button("最小構成 (サマリー・睡眠・バイタル)", use_container_width=True):
-                new_settings = DashboardSettings(
-                    visible_tabs=["📊 サマリー", "😴 睡眠", "❤️ バイタル"],
-                    visible_summary_items=settings.visible_summary_items,
-                )
-                save_dashboard_settings(new_settings)
-                st.session_state["dashboard_settings"] = new_settings
-                st.rerun()
+            st.button(
+                "最小構成 (サマリー・睡眠・バイタル)",
+                use_container_width=True,
+                on_click=_apply_minimal_tabs_preset,
+            )
 
         st.divider()
         st.subheader("2. サマリー画面の表示項目")
         st.write("エグゼクティブ・サマリータブに表示する項目を選択してください。")
 
         summary_options = [k.value for k in SummaryItemKey]
-        selected_summary_keys = st.multiselect(
+        st.multiselect(
             "サマリー表示項目",
             options=summary_options,
             format_func=lambda k: SUMMARY_ITEMS_LABEL_MAP.get(SummaryItemKey(k), k),
@@ -212,23 +252,18 @@ def main() -> None:
         st.divider()
         col_save, col_reset = st.columns(2)
         with col_save:
-            if st.button("💾 設定を保存して適用", use_container_width=True, type="primary"):
-                saved_settings = DashboardSettings(
-                    visible_tabs=selected_tabs,
-                    visible_summary_items=selected_summary_keys,
-                )
-                if save_dashboard_settings(saved_settings):
-                    st.session_state["dashboard_settings"] = saved_settings
-                    st.success("✅ 設定を保存しました。(./data/dashboard_settings.json)")
-                    st.rerun()
-                else:
-                    st.error("❌ 設定の保存に失敗しました。")
+            st.button(
+                "💾 設定を保存して適用",
+                use_container_width=True,
+                type="primary",
+                on_click=_save_and_apply_settings,
+            )
         with col_reset:
-            if st.button("🔄 初期設定に戻す", use_container_width=True):
-                default_settings = reset_dashboard_settings()
-                st.session_state["dashboard_settings"] = default_settings
-                st.success("✅ 設定を初期値にリセットしました。")
-                st.rerun()
+            st.button(
+                "🔄 初期設定に戻す",
+                use_container_width=True,
+                on_click=_reset_to_default_settings,
+            )
 
         render_backup_sidebar()
         return

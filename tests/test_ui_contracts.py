@@ -235,3 +235,42 @@ def test_app_smoke_with_live_db_if_available() -> None:
     )
     at.run()
     assert not at.exception
+
+
+def test_app_settings_screen_save_interaction() -> None:
+    """Verify navigating to settings screen, modifying configuration, and saving updates state."""
+    live_db = Path(__file__).resolve().parent.parent / "data" / "health_connect_export.db"
+    if not live_db.exists():
+        pytest.skip("Live database not available for AppTest")
+
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(
+        str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
+    )
+    at.run()
+    assert not at.exception
+
+    # Switch view mode to Settings screen
+    at.radio(key="app_view_mode").set_value("⚙️ 設定画面").run()
+    assert not at.exception
+
+    # Click "最小構成" preset button
+    min_btn = next((b for b in at.button if "最小構成" in b.label), None)
+    assert min_btn is not None
+    min_btn.click().run()
+    assert not at.exception
+    assert len(at.success) > 0
+    assert "最小構成" in at.success[0].value
+
+    # Click "設定を保存して適用" button
+    save_btn = next((b for b in at.button if "設定を保存して適用" in b.label), None)
+    assert save_btn is not None
+    save_btn.click().run()
+    assert not at.exception
+    assert len(at.success) > 0
+    assert "設定を保存して適用しました" in at.success[0].value
+
+    # Switch back to dashboard view and verify tabs render without exception
+    at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
+    assert not at.exception
