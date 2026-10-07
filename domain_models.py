@@ -139,6 +139,59 @@ class SleepSessionDetail(BaseModel):
     stages: Sequence[SleepStageInterval] = Field(default_factory=tuple)
 
 
+class DailySleepSummary(BaseModel):
+    """日別睡眠集計データ契約。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    date_str: str
+    total_duration_minutes: float
+    total_duration_hours: float
+    session_count: int = 1
+
+
+class SummaryItemKey(StrEnum):
+    """サマリー表示項目の識別子。"""
+
+    METRIC_STEPS = "metric_steps"
+    METRIC_CALORIES = "metric_calories"
+    METRIC_WEIGHT = "metric_weight"
+    METRIC_SLEEP = "metric_sleep"
+    CHART_ACTIVITY = "chart_activity"
+
+
+DEFAULT_VISIBLE_TABS: Final[tuple[str, ...]] = (
+    "📊 サマリー",
+    "🏃 アクティビティ",
+    "⚖️ 身体測定",
+    "😴 睡眠",
+    "❤️ バイタル",
+    "🍎 栄養・生活",
+    "🩺 医療・月経",
+    "📱 デバイス・監査",
+    "🔍 全77テーブル探索",
+)
+
+SUMMARY_ITEMS_LABEL_MAP: Final[Mapping[SummaryItemKey, str]] = {
+    SummaryItemKey.METRIC_STEPS: "👟 最新日歩数・移動距離",
+    SummaryItemKey.METRIC_CALORIES: "🔥 総消費カロリー",
+    SummaryItemKey.METRIC_WEIGHT: "⚖️ 最新体重",
+    SummaryItemKey.METRIC_SLEEP: "😴 直近睡眠時間",
+    SummaryItemKey.CHART_ACTIVITY: "📈 アクティビティ複合推移グラフ",
+}
+
+
+class DashboardSettings(BaseModel):
+    """ダッシュボード表示設定契約モデル。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    visible_tabs: list[str] = Field(default_factory=lambda: list(DEFAULT_VISIBLE_TABS))
+    visible_summary_items: list[str] = Field(
+        default_factory=lambda: [k.value for k in SummaryItemKey]
+    )
+
+
 class HeartRatePoint(BaseModel):
     """心拍数時系列データポイント。"""
 

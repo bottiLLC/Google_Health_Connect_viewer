@@ -260,6 +260,19 @@ def test_get_sleep_sessions(analytics_mock_db: Path) -> None:
     assert sess.stages[1].stage_name == "深い睡眠 (DEEP)"
 
 
+def test_get_daily_sleep_summary(analytics_mock_db: Path) -> None:
+    """Verify daily sleep aggregation and duration calculation."""
+    engine = HealthConnectDbEngine(analytics_mock_db)
+    service = HealthConnectAnalyticsService(engine)
+    summaries = service.get_daily_sleep_summary(DashboardFilterParams())
+    assert len(summaries) == 1
+    s = summaries[0]
+    assert s.session_count == 1
+    assert s.total_duration_minutes == 480.0
+    assert s.total_duration_hours == 8.0
+    assert len(s.date_str) == 10
+
+
 def test_get_heart_rate_and_oxygen_saturation(analytics_mock_db: Path) -> None:
     """Verify heart rate stats and oxygen saturation low event detection."""
     engine = HealthConnectDbEngine(analytics_mock_db)

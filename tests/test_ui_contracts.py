@@ -11,6 +11,7 @@ import pytest
 from domain_models import (
     ColumnMeta,
     DailyActivitySummary,
+    DailySleepSummary,
     GpsRoutePoint,
     SleepStageInterval,
 )
@@ -18,6 +19,7 @@ from ui_components import (
     build_activity_composite_chart,
     build_body_measurement_chart,
     build_calories_chart,
+    build_daily_sleep_trend_chart,
     build_heart_rate_chart,
     build_oxygen_saturation_chart,
     build_sleep_stages_chart,
@@ -79,6 +81,31 @@ def test_build_body_measurement_chart() -> None:
     assert len(fig.data) == 2
 
     fig_empty = build_body_measurement_chart(pd.DataFrame())
+    assert fig_empty is not None
+
+
+def test_build_daily_sleep_trend_chart() -> None:
+    """Verify daily sleep trend chart builder with valid and empty data."""
+    summaries = [
+        DailySleepSummary(
+            date_str="2026-10-01",
+            total_duration_minutes=420.0,
+            total_duration_hours=7.0,
+            session_count=1,
+        ),
+        DailySleepSummary(
+            date_str="2026-10-02",
+            total_duration_minutes=480.0,
+            total_duration_hours=8.0,
+            session_count=2,
+        ),
+    ]
+    fig = build_daily_sleep_trend_chart(summaries)
+    assert len(fig.data) == 1
+    assert fig.data[0].x == ("2026-10-01", "2026-10-02")
+    assert fig.data[0].y == (7.0, 8.0)
+
+    fig_empty = build_daily_sleep_trend_chart([])
     assert fig_empty is not None
 
 

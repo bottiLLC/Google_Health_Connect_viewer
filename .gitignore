@@ -29,6 +29,7 @@
 !analytics_service.py
 !ui_components.py
 !backup_manager.py
+!settings_manager.py
 
 # 6. CI Pipeline Workflows
 !.github/

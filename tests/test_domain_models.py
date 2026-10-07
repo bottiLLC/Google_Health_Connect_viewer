@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from domain_models import (
+    DEFAULT_VISIBLE_TABS,
+    SUMMARY_ITEMS_LABEL_MAP,
+    DailySleepSummary,
+    DashboardSettings,
     HealthDomainCategory,
+    SummaryItemKey,
     resolve_category_for_table,
 )
 
@@ -60,3 +65,26 @@ def test_health_domain_category_label_ja() -> None:
         label = cat.label_ja
         assert isinstance(label, str)
         assert len(label) > 0
+
+
+def test_daily_sleep_summary_model() -> None:
+    """Verify DailySleepSummary instantiation and immutability."""
+    summary = DailySleepSummary(
+        date_str="2026-10-01",
+        total_duration_minutes=450.0,
+        total_duration_hours=7.5,
+        session_count=1,
+    )
+    assert summary.date_str == "2026-10-01"
+    assert summary.total_duration_minutes == 450.0
+    assert summary.total_duration_hours == 7.5
+    assert summary.session_count == 1
+
+
+def test_dashboard_settings_model_defaults() -> None:
+    """Verify DashboardSettings default values and item mappings."""
+    settings = DashboardSettings()
+    assert settings.visible_tabs == list(DEFAULT_VISIBLE_TABS)
+    assert len(settings.visible_summary_items) == len(SummaryItemKey)
+    for key in SummaryItemKey:
+        assert key in SUMMARY_ITEMS_LABEL_MAP

@@ -13,6 +13,7 @@ from backup_manager import get_backup_dir, run_backup, set_backup_dir
 from domain_models import (
     ColumnMeta,
     DailyActivitySummary,
+    DailySleepSummary,
     GpsRoutePoint,
     SleepStageInterval,
 )
@@ -179,6 +180,64 @@ def build_body_measurement_chart(df: pd.DataFrame) -> go.Figure:
         hovermode="x unified",
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
         margin={"l": 40, "r": 40, "t": 60, "b": 40},
+        template="plotly_dark",
+    )
+    return fig
+
+
+def build_daily_sleep_trend_chart(summaries: Sequence[DailySleepSummary]) -> go.Figure:
+    """Render daily sleep duration trend line chart with recommended sleep threshold.
+
+    Args:
+        summaries: Sequence of DailySleepSummary ordered by date ascending.
+
+    Returns:
+        Plotly Figure object representing daily sleep duration in hours.
+    """
+    if not summaries:
+        fig = go.Figure()
+        fig.update_layout(title="日毎の睡眠時間推移データがありません", template="plotly_dark")
+        return fig
+
+    fig = go.Figure()
+
+    # Recommended sleep threshold background band (7.0 to 8.0 hours)
+    fig.add_hrect(
+        y0=7.0,
+        y1=8.0,
+        line_width=0,
+        fillcolor="#38bdf8",
+        opacity=0.12,
+        annotation_text="推奨睡眠基準 (7〜8h)",
+        annotation_position="top left",
+    )
+
+    x_vals = [s.date_str for s in summaries]
+    y_vals = [s.total_duration_hours for s in summaries]
+    hover_texts = [
+        f"{int(s.total_duration_minutes // 60)}時間 {int(s.total_duration_minutes % 60)}分 ({s.session_count}セッション)"
+        for s in summaries
+    ]
+
+    fig.add_trace(
+        go.Scatter(
+            x=x_vals,
+            y=y_vals,
+            mode="lines+markers",
+            line={"color": "#818cf8", "width": 3, "shape": "spline"},
+            marker={"size": 8, "color": "#c7d2fe"},
+            customdata=hover_texts,
+            hovertemplate="<b>%{x}</b><br>合計睡眠時間: %{y:.2f} 時間<br>詳細: %{customdata}<extra></extra>",
+            name="睡眠時間",
+        )
+    )
+
+    fig.update_layout(
+        title="📈 日毎の睡眠時間推移 (時間)",
+        xaxis={"title": "日付", "showgrid": False},
+        yaxis={"title": "睡眠時間 (時間)", "rangemode": "tozero"},
+        height=360,
+        margin={"l": 40, "r": 20, "t": 50, "b": 40},
         template="plotly_dark",
     )
     return fig

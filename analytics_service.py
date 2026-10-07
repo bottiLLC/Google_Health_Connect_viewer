@@ -12,6 +12,7 @@ from domain_models import (
     SLEEP_STAGE_MAP,
     AppInfoItem,
     DailyActivitySummary,
+    DailySleepSummary,
     DashboardFilterParams,
     DeviceInfoItem,
     ExerciseSessionDetail,
@@ -403,6 +404,44 @@ class HealthConnectAnalyticsService:
                 )
             )
         return results
+
+    def get_daily_sleep_summary(
+        self,
+        filters: DashboardFilterParams,
+    ) -> list[DailySleepSummary]:
+        """Aggregate daily total sleep duration and session counts.
+
+        Args:
+            filters: Filter parameters.
+
+        Returns:
+            List of DailySleepSummary ordered by date ascending.
+        """
+        where_clause, params = self._engine.build_time_filter_clause("start_time", filters)
+        query = f"""
+            SELECT
+                strftime('%Y-%m-%d', datetime(start_time / 1000, 'unixepoch', '+9 hours')) AS day_str,
+                sum((end_time - start_time) / 60000.0) AS total_duration_min,
+                count(*) AS session_count
+            FROM sleep_session_record_table
+            WHERE start_time IS NOT NULL AND end_time IS NOT NULL {where_clause}
+            GROUP BY day_str
+            ORDER BY day_str ASC;
+        """
+        df = self._engine.execute_query(query, params)
+        summaries: list[DailySleepSummary] = []
+        for _, row in df.iterrows():
+            total_min = round(float(row["total_duration_min"]), 1)
+            total_hours = round(total_min / 60.0, 2)
+            summaries.append(
+                DailySleepSummary(
+                    date_str=str(row["day_str"]),
+                    total_duration_minutes=total_min,
+                    total_duration_hours=total_hours,
+                    session_count=int(row["session_count"]),
+                )
+            )
+        return summaries
 
     def get_heart_rate_summary_df(
         self,
