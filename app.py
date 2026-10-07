@@ -244,7 +244,11 @@ def main() -> None:
         st.multiselect(
             "サマリー表示項目",
             options=summary_options,
-            format_func=lambda k: SUMMARY_ITEMS_LABEL_MAP.get(SummaryItemKey(k), k),
+            format_func=lambda k: (
+                SUMMARY_ITEMS_LABEL_MAP.get(SummaryItemKey(k), str(k))
+                if isinstance(k, str) and k in SummaryItemKey._value2member_map_
+                else str(k)
+            ),
             default=[k for k in settings.visible_summary_items if k in summary_options],
             key="settings_summary_items_multiselect",
         )

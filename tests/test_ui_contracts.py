@@ -287,3 +287,43 @@ def test_app_settings_screen_save_interaction() -> None:
     # Switch back to dashboard view and verify tabs render without exception
     at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
     assert not at.exception
+
+
+def test_app_summary_tab_all_excerpt_charts_render() -> None:
+    """Verify summary tab renders all excerpt charts when selected in settings."""
+    live_db = Path(__file__).resolve().parent.parent / "data" / "health_connect_export.db"
+    if not live_db.exists():
+        pytest.skip("Live database not available for AppTest")
+
+    from streamlit.testing.v1 import AppTest
+
+    from domain_models import SummaryItemKey
+
+    at = AppTest.from_file(
+        str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
+    )
+    at.run()
+    assert not at.exception
+
+    # Switch to Settings screen
+    at.radio(key="app_view_mode").set_value("⚙️ 設定画面").run()
+    assert not at.exception
+
+    # Select all summary items (metrics + excerpt charts)
+    all_summary_keys = [k.value for k in SummaryItemKey]
+    ms = at.multiselect(key="settings_summary_items_multiselect")
+    for key in all_summary_keys:
+        if key not in ms.value:
+            ms.select(key)
+    ms.run()
+    assert not at.exception
+
+    # Save settings
+    save_btn = next((b for b in at.button if "設定を保存して適用" in b.label), None)
+    assert save_btn is not None
+    save_btn.click().run()
+    assert not at.exception
+
+    # Switch back to Dashboard view
+    at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
+    assert not at.exception
