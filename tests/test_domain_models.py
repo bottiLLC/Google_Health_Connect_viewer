@@ -88,3 +88,9 @@ def test_dashboard_settings_model_defaults() -> None:
     assert len(settings.visible_summary_items) == len(SummaryItemKey)
     for key in SummaryItemKey:
         assert key in SUMMARY_ITEMS_LABEL_MAP
+
+    assert SummaryItemKey.CHART_CALORIES in SummaryItemKey
+    assert SummaryItemKey.CHART_BODY_MEASUREMENT in SummaryItemKey
+    assert SummaryItemKey.CHART_SLEEP_TREND in SummaryItemKey
+    assert SummaryItemKey.CHART_HEART_RATE in SummaryItemKey
+    assert SummaryItemKey.CHART_OXYGEN_SATURATION in SummaryItemKey

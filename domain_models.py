@@ -153,11 +153,19 @@ class DailySleepSummary(BaseModel):
 class SummaryItemKey(StrEnum):
     """サマリー表示項目の識別子。"""
 
+    # --- KPI メトリクスカード ---
     METRIC_STEPS = "metric_steps"
     METRIC_CALORIES = "metric_calories"
     METRIC_WEIGHT = "metric_weight"
     METRIC_SLEEP = "metric_sleep"
+
+    # --- 各タブからの抜粋グラフ ---
     CHART_ACTIVITY = "chart_activity"
+    CHART_CALORIES = "chart_calories"
+    CHART_BODY_MEASUREMENT = "chart_body_measurement"
+    CHART_SLEEP_TREND = "chart_sleep_trend"
+    CHART_HEART_RATE = "chart_heart_rate"
+    CHART_OXYGEN_SATURATION = "chart_oxygen_saturation"
 
 
 DEFAULT_VISIBLE_TABS: Final[tuple[str, ...]] = (
@@ -173,11 +181,16 @@ DEFAULT_VISIBLE_TABS: Final[tuple[str, ...]] = (
 )
 
 SUMMARY_ITEMS_LABEL_MAP: Final[Mapping[SummaryItemKey, str]] = {
-    SummaryItemKey.METRIC_STEPS: "👟 最新日歩数・移動距離",
-    SummaryItemKey.METRIC_CALORIES: "🔥 総消費カロリー",
-    SummaryItemKey.METRIC_WEIGHT: "⚖️ 最新体重",
-    SummaryItemKey.METRIC_SLEEP: "😴 直近睡眠時間",
-    SummaryItemKey.CHART_ACTIVITY: "📈 アクティビティ複合推移グラフ",
+    SummaryItemKey.METRIC_STEPS: "👟 [指標] 最新日歩数・移動距離",
+    SummaryItemKey.METRIC_CALORIES: "🔥 [指標] 総消費カロリー",
+    SummaryItemKey.METRIC_WEIGHT: "⚖️ [指標] 最新体重",
+    SummaryItemKey.METRIC_SLEEP: "😴 [指標] 直近睡眠時間",
+    SummaryItemKey.CHART_ACTIVITY: "🏃 [グラフ: アクティビティ] 歩数・移動距離推移",
+    SummaryItemKey.CHART_CALORIES: "🔥 [グラフ: アクティビティ] 消費カロリー推移",
+    SummaryItemKey.CHART_BODY_MEASUREMENT: "⚖️ [グラフ: 身体測定] 体重・体脂肪率推移",
+    SummaryItemKey.CHART_SLEEP_TREND: "😴 [グラフ: 睡眠] 日毎睡眠時間推移",
+    SummaryItemKey.CHART_HEART_RATE: "❤️ [グラフ: バイタル] 心拍数推移",
+    SummaryItemKey.CHART_OXYGEN_SATURATION: "🫁 [グラフ: バイタル] 血中酸素濃度推移",
 }
 
 

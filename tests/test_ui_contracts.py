@@ -221,6 +221,19 @@ def test_app_plotly_charts_have_unique_keys() -> None:
     assert len(keys) > 0, "No st.plotly_chart calls found in app.py"
     assert len(keys) == len(set(keys)), f"Duplicate keys found in st.plotly_chart calls: {keys}"
 
+    expected_overview_keys = {
+        "overview_activity_composite_chart",
+        "overview_calories_chart",
+        "overview_body_measurement_chart",
+        "overview_daily_sleep_trend_chart",
+        "overview_heart_rate_chart",
+        "overview_oxygen_saturation_chart",
+    }
+    for expected in expected_overview_keys:
+        assert expected in keys, (
+            f"Expected key {expected} not found in app.py st.plotly_chart calls"
+        )
+
 
 def test_app_smoke_with_live_db_if_available() -> None:
     """Verify app.py renders cleanly without Streamlit exceptions when live database is present."""

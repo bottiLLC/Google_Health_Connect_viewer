@@ -324,14 +324,71 @@ def main() -> None:
                     with col:
                         st.metric(label, val, delta=delta)
 
+            has_charts = False
+
             if SummaryItemKey.CHART_ACTIVITY.value in visible_summary:
+                has_charts = True
                 st.plotly_chart(
                     build_activity_composite_chart(daily_acts),
                     use_container_width=True,
                     key="overview_activity_composite_chart",
                 )
 
-            if not metric_items and SummaryItemKey.CHART_ACTIVITY.value not in visible_summary:
+            if SummaryItemKey.CHART_CALORIES.value in visible_summary:
+                has_charts = True
+                st.plotly_chart(
+                    build_calories_chart(daily_acts),
+                    use_container_width=True,
+                    key="overview_calories_chart",
+                )
+
+            if SummaryItemKey.CHART_BODY_MEASUREMENT.value in visible_summary:
+                has_charts = True
+                st.plotly_chart(
+                    build_body_measurement_chart(df_body),
+                    use_container_width=True,
+                    key="overview_body_measurement_chart",
+                )
+
+            if SummaryItemKey.CHART_SLEEP_TREND.value in visible_summary:
+                has_charts = True
+                daily_sleep = analytics.get_daily_sleep_summary(filter_params)
+                st.plotly_chart(
+                    build_daily_sleep_trend_chart(daily_sleep),
+                    use_container_width=True,
+                    key="overview_daily_sleep_trend_chart",
+                )
+
+            show_hr = SummaryItemKey.CHART_HEART_RATE.value in visible_summary
+            show_o2 = SummaryItemKey.CHART_OXYGEN_SATURATION.value in visible_summary
+
+            if show_hr or show_o2:
+                has_charts = True
+                if show_hr and show_o2:
+                    col_ov1, col_ov2 = st.columns(2)
+                elif show_hr:
+                    col_ov1 = st.container()
+                    col_ov2 = None
+                else:
+                    col_ov1 = None
+                    col_ov2 = st.container()
+
+                if col_ov1 is not None:
+                    with col_ov1:
+                        st.plotly_chart(
+                            build_heart_rate_chart(df_hr),
+                            use_container_width=True,
+                            key="overview_heart_rate_chart",
+                        )
+                if col_ov2 is not None:
+                    with col_ov2:
+                        st.plotly_chart(
+                            build_oxygen_saturation_chart(df_o2),
+                            use_container_width=True,
+                            key="overview_oxygen_saturation_chart",
+                        )
+
+            if not metric_items and not has_charts:
                 st.info(
                     "ℹ️ サマリーの表示項目がすべて無効化されています。設定画面から項目を有効化してください。"
                 )
