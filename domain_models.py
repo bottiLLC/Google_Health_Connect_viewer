@@ -294,6 +294,43 @@ class DashboardSettings(BaseModel):
     visible_summary_items: list[str] = Field(
         default_factory=lambda: [k.value for k in SummaryItemKey]
     )
+    drive_folder_id: str = Field(default="")
+
+
+class DriveFileMeta(BaseModel):
+    """Google Drive 上のバックアップファイルメタデータ契約。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    file_id: str
+    name: str
+    modified_time: datetime.datetime
+    size_bytes: int
+
+
+class TableMergeStat(BaseModel):
+    """テーブル単位のマージ結果統計契約。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    table_name: str
+    rows_inserted: int
+
+
+class DriveSyncResult(BaseModel):
+    """Google Drive 同期および SQLite 差分マージ実行結果契約モデル。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    success: bool
+    message: str
+    timestamp: datetime.datetime = Field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
+    )
+    downloaded_file_name: str | None = None
+    total_rows_merged: int = 0
+    table_stats: list[TableMergeStat] = Field(default_factory=list)
+    backup_zip_path: str | None = None
 
 
 class HeartRatePoint(BaseModel):

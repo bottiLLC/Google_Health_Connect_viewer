@@ -28,6 +28,7 @@ from domain_models import (
     TableCatalogMeta,
     resolve_filter_date_range,
 )
+from drive_sync import GoogleDriveSyncClient
 from settings_manager import (
     load_dashboard_settings,
     reset_dashboard_settings,
@@ -105,6 +106,7 @@ def main() -> None:
         new_settings = DashboardSettings(
             visible_tabs=list(DEFAULT_VISIBLE_TABS),
             visible_summary_items=cur.visible_summary_items,
+            drive_folder_id=cur.drive_folder_id,
         )
         save_dashboard_settings(new_settings)
         st.session_state["dashboard_settings"] = new_settings
@@ -118,6 +120,7 @@ def main() -> None:
         new_settings = DashboardSettings(
             visible_tabs=min_tabs,
             visible_summary_items=cur.visible_summary_items,
+            drive_folder_id=cur.drive_folder_id,
         )
         save_dashboard_settings(new_settings)
         st.session_state["dashboard_settings"] = new_settings
@@ -129,13 +132,18 @@ def main() -> None:
 
     def _save_and_apply_settings() -> None:
         """Save and persist current settings selections."""
+        cur = st.session_state.get("dashboard_settings", DashboardSettings())
         tabs = st.session_state.get("settings_tabs_multiselect", list(DEFAULT_VISIBLE_TABS))
         summary_items = st.session_state.get(
             "settings_summary_items_multiselect", [k.value for k in SummaryItemKey]
         )
+        folder_id = st.session_state.get("settings_drive_folder_id_input", cur.drive_folder_id)
         saved = DashboardSettings(
             visible_tabs=list(tabs),
             visible_summary_items=list(summary_items),
+            drive_folder_id=folder_id.strip()
+            if isinstance(folder_id, str)
+            else cur.drive_folder_id,
         )
         if save_dashboard_settings(saved):
             st.session_state["dashboard_settings"] = saved
@@ -148,10 +156,19 @@ def main() -> None:
 
     def _reset_to_default_settings() -> None:
         """Reset dashboard settings to original defaults."""
+        cur = st.session_state.get("dashboard_settings", DashboardSettings())
         default_settings = reset_dashboard_settings()
+        if cur.drive_folder_id:
+            default_settings = DashboardSettings(
+                visible_tabs=default_settings.visible_tabs,
+                visible_summary_items=default_settings.visible_summary_items,
+                drive_folder_id=cur.drive_folder_id,
+            )
+            save_dashboard_settings(default_settings)
         st.session_state["dashboard_settings"] = default_settings
         st.session_state["settings_tabs_multiselect"] = list(DEFAULT_VISIBLE_TABS)
         st.session_state["settings_summary_items_multiselect"] = [k.value for k in SummaryItemKey]
+        st.session_state["settings_drive_folder_id_input"] = default_settings.drive_folder_id
         st.session_state["settings_flash_message"] = ("✅ 設定を初期値にリセットしました。", False)
 
     # 2. Sidebar configuration, mode selection, and filters
@@ -369,6 +386,32 @@ def main() -> None:
             default=[k for k in settings.visible_summary_items if k in summary_options],
             key="settings_summary_items_multiselect",
         )
+
+        st.divider()
+        st.subheader("3. ☁️ Google Drive クラウド同期設定")
+        st.caption(
+            "Google Drive 上に定期バックアップされる ZIP / SQLite ファイルを同期するための接続設定です。"
+        )
+        drive_client = GoogleDriveSyncClient()
+
+        st.text_input(
+            "Google Drive フォルダ ID",
+            value=settings.drive_folder_id,
+            key="settings_drive_folder_id_input",
+            help="バックアップファイル（ZIPまたはSQLite）が格納されている Google Drive フォルダの URL 末尾 ID",
+        )
+
+        col_cred, col_token = st.columns(2)
+        with col_cred:
+            if drive_client.has_credentials():
+                st.success("✅ OAuth 認証情報: 準備完了 (`./data/credentials.json`)")
+            else:
+                st.warning("⚠️ OAuth 認証情報: 未配置 (`./data/credentials.json` が必要)")
+        with col_token:
+            if drive_client.has_token():
+                st.success("✅ Google 認証トークン: 認証済み (`./data/token.json`)")
+            else:
+                st.info("ℹ️ Google 認証トークン: 初回同期時にブラウザ認証を実行")
 
         st.divider()
         col_save, col_reset = st.columns(2)

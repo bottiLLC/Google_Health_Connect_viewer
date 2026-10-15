@@ -10,23 +10,113 @@ import pydeck as pdk
 import streamlit as st
 
 from backup_manager import get_backup_dir, run_backup, set_backup_dir
+from db_merger import DatabaseMergeError, SqliteDatabaseMerger
 from domain_models import (
     ColumnMeta,
     DailyActivitySummary,
     DailySleepSummary,
+    DashboardSettings,
     GpsRoutePoint,
     SleepStageInterval,
 )
+from drive_sync import (
+    DriveAuthError,
+    DriveFileNotFoundError,
+    DriveSyncError,
+    GoogleDriveSyncClient,
+)
+from settings_manager import load_dashboard_settings, save_dashboard_settings
+
+
+def render_drive_sync_sidebar() -> None:
+    """Render Google Drive synchronization widget in Streamlit sidebar."""
+    st.divider()
+    st.subheader("Google Drive クラウド同期")
+
+    settings = load_dashboard_settings()
+    folder_id = st.text_input(
+        "Drive フォルダ ID",
+        value=settings.drive_folder_id,
+        help="SQLiteバックアップが格納されている Google Drive フォルダの ID",
+    )
+    if folder_id != settings.drive_folder_id and st.button(
+        "フォルダ ID を保存", use_container_width=True
+    ):
+        new_settings = DashboardSettings(
+            visible_tabs=settings.visible_tabs,
+            visible_summary_items=settings.visible_summary_items,
+            drive_folder_id=folder_id.strip(),
+        )
+        save_dashboard_settings(new_settings)
+        st.success("フォルダ ID を保存しました。")
+        st.rerun()
+
+    client = GoogleDriveSyncClient()
+    if not client.has_credentials():
+        st.caption("⚠️ `./data/credentials.json` が未配置です。")
+    elif not client.has_token():
+        st.caption("ℹ️ 初回実行時にブラウザで Google 認証が必要です。")
+    else:
+        st.caption("✅ Google Drive 認証済み")
+
+    if st.button("Driveから最新データを同期", use_container_width=True):
+        target_folder = folder_id.strip() or settings.drive_folder_id.strip()
+        if not target_folder:
+            st.warning("⚠️ Google Drive フォルダ ID を設定してください。")
+            return
+
+        if not client.has_credentials():
+            st.error(
+                "❌ `./data/credentials.json` が見つかりません。\n"
+                "Google Cloud Console から OAuth クライアント JSON をダウンロードして配置してください。"
+            )
+            return
+
+        try:
+            with st.spinner("最新データを同期中... (Drive検索・ダウンロード・解凍・差分マージ)"):
+                latest_file = client.find_latest_backup_file(target_folder)
+                is_zip = latest_file.name.lower().endswith(".zip")
+                type_label = "ZIP 圧縮バックアップ" if is_zip else "SQLite データベース"
+                st.caption(
+                    f"最新バックアップ: {latest_file.name} ({type_label}, {latest_file.modified_time.strftime('%Y-%m-%d %H:%M')})"
+                )
+
+                with client.download_and_extract_db(
+                    latest_file.file_id, file_name=latest_file.name
+                ) as temp_db:
+                    merger = SqliteDatabaseMerger()
+                    result = merger.merge_from_temp_db(temp_db, source_file_name=latest_file.name)
+
+            if result.success:
+                st.success(result.message)
+                st.toast(f"同期成功: 新規 {result.total_rows_merged} 件を追加しました", icon="✅")
+                st.cache_data.clear()
+                st.rerun()
+            else:
+                st.error(f"❌ 同期失敗: {result.message}")
+
+        except DriveAuthError as e:
+            st.error(f"❌ 認証エラー: {e!s}")
+        except DriveFileNotFoundError as e:
+            st.error(f"❌ ファイル未検出: {e!s}")
+        except DatabaseMergeError as e:
+            st.error(f"❌ データベースマージエラー: {e!s}")
+        except DriveSyncError as e:
+            st.error(f"❌ Google Drive エラー: {e!s}")
+        except Exception as e:
+            st.error(f"❌ 予期せぬエラーが発生しました: {e!s}")
 
 
 def render_backup_sidebar() -> None:
-    """Render standardized Japanese backup management widget in Streamlit sidebar."""
+    """Render standardized Japanese backup and cloud sync management widget in Streamlit sidebar."""
     with st.sidebar:
+        render_drive_sync_sidebar()
+
         st.divider()
-        st.subheader("データ保護・バックアップ")
+        st.subheader("データ保護・ローカルバックアップ")
 
         current_dir = str(get_backup_dir())
-        new_dir = st.text_input("保存先フォルダ", value=current_dir)
+        new_dir = st.text_input("バックアップ先フォルダ", value=current_dir)
         if new_dir != current_dir and st.button("保存先パスを更新", use_container_width=True):
             save_res = set_backup_dir(new_dir)
             if save_res["success"]:

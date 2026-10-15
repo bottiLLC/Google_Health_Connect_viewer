@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -201,6 +201,38 @@ def test_render_backup_sidebar_triggers() -> None:
         render_backup_sidebar()
 
 
+def test_render_drive_sync_sidebar_triggers() -> None:
+    """Verify render_drive_sync_sidebar interaction and exception handling."""
+    from ui_components import render_drive_sync_sidebar
+
+    with (
+        patch("streamlit.text_input", return_value="test_folder_id"),
+        patch("streamlit.button", return_value=True),
+        patch("ui_components.GoogleDriveSyncClient") as mock_client_cls,
+    ):
+        mock_client = mock_client_cls.return_value
+        mock_client.has_credentials.return_value = True
+        mock_client.has_token.return_value = True
+        mock_client.find_latest_sqlite_file.return_value = MagicMock(
+            file_id="fid_123", name="test.db", modified_time=datetime.datetime.now(datetime.UTC)
+        )
+        mock_client.download_file_to_temp.return_value.__enter__.return_value = Path("/tmp/test.db")
+
+        with patch("ui_components.SqliteDatabaseMerger") as mock_merger_cls:
+            mock_merger = mock_merger_cls.return_value
+            mock_merger.merge_from_temp_db.return_value = MagicMock(
+                success=True, message="Merged successfully", total_rows_merged=5
+            )
+            with (
+                patch("streamlit.success") as mock_success,
+                patch("streamlit.toast"),
+                patch("streamlit.cache_data.clear"),
+                patch("streamlit.rerun"),
+            ):
+                render_drive_sync_sidebar()
+                assert mock_success.called
+
+
 def test_app_plotly_charts_have_unique_keys() -> None:
     """Verify that all st.plotly_chart calls in app.py specify explicit and unique key arguments."""
     app_path = Path(__file__).resolve().parent.parent / "app.py"
@@ -281,6 +313,12 @@ def test_app_settings_screen_save_interaction() -> None:
     assert len(at.success) > 0
     assert "最小構成" in at.success[0].value
 
+    # Set Google Drive folder ID in settings screen
+    folder_input = at.text_input(key="settings_drive_folder_id_input")
+    assert folder_input is not None
+    folder_input.set_value("drive_folder_abc123").run()
+    assert not at.exception
+
     # Click "設定を保存して適用" button
     save_btn = next((b for b in at.button if "設定を保存して適用" in b.label), None)
     assert save_btn is not None
@@ -288,6 +326,12 @@ def test_app_settings_screen_save_interaction() -> None:
     assert not at.exception
     assert len(at.success) > 0
     assert "設定を保存して適用しました" in at.success[0].value
+
+    # Verify settings persisted with drive_folder_id
+    from settings_manager import load_dashboard_settings
+
+    persisted = load_dashboard_settings()
+    assert persisted.drive_folder_id == "drive_folder_abc123"
 
     # Switch back to dashboard view and verify tabs render without exception
     at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()

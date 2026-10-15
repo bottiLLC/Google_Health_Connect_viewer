@@ -30,6 +30,8 @@
 !ui_components.py
 !backup_manager.py
 !settings_manager.py
+!drive_sync.py
+!db_merger.py
 
 # 6. CI Pipeline Workflows
 !.github/

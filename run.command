@@ -9,6 +9,7 @@ echo ""
 
 # 0. Force uv to use local system Python (disable downloading Python binaries)
 export UV_PYTHON_PREFERENCE=only-system
+export UV_LINK_MODE=copy
 
 # 1. Auto-detect existing uv in standard locations
 if ! command -v uv &> /dev/null; then
@@ -90,10 +91,22 @@ fi
 echo "[INFO] Entry point found: $ENTRY_POINT"
 echo "[INFO] Working directory: $PROJ_ROOT"
 
-# 4. Auto-create .venv and sync package dependencies
+# 4. Auto-create .venv with copy mode and multi-tier fallback
 if [ ! -d ".venv" ]; then
-    echo "[INFO] Creating virtual environment..."
-    uv venv --python python
+    echo "[INFO] Creating virtual environment (copy mode)...
+    uv venv --python python --link-mode copy
+    if [ $? -ne 0 ]; then
+        echo "[WARNING] Standard creation failed. Retrying with --clear..."
+        uv venv --python python --link-mode copy --clear
+    fi
+    if [ $? -ne 0 ]; then
+        echo "[WARNING] 'uv venv' failed. Falling back to 'python -m venv'..."
+        if [ -n "$PYTHON_CMD" ]; then
+            $PYTHON_CMD -m venv .venv
+        else
+            python3 -m venv .venv 2>/dev/null || python -m venv .venv
+        fi
+    fi
     if [ $? -ne 0 ]; then
         echo "[ERROR] Failed to create virtual environment .venv."
         echo ""
