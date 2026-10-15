@@ -1,6 +1,5 @@
 @echo off
 setlocal
-chcp 65001 >nul 2>&1
 set "PROJ_ROOT=%~dp0"
 cd /d "%PROJ_ROOT%"
 
@@ -9,15 +8,9 @@ echo   App Launcher (Windows / Python-only Environment)
 echo ===================================================
 echo.
 
-:: 0. Force uv settings for maximum filesystem compatibility
+:: 0. Force uv to use local system Python and safe copy mode
 set "UV_PYTHON_PREFERENCE=only-system"
 set "UV_LINK_MODE=copy"
-
-:: Check for active OneDrive directory path (informational notice)
-echo "%PROJ_ROOT%" | findstr /i "OneDrive" >nul 2>&1
-if %errorlevel% equ 0 (
-    echo [NOTICE] Running from OneDrive-managed path. Link mode forced to 'copy'.
-)
 
 :: 1. Auto-detect existing uv in standard locations
 where uv >nul 2>&1
@@ -105,24 +98,12 @@ cd /d "%PROJ_ROOT%"
 echo [INFO] Entry point found: %ENTRY_POINT%
 echo [INFO] Working directory: %PROJ_ROOT%
 
-:: 4. Auto-create .venv with copy mode and multi-tier fallback
+:: 4. Auto-create .venv and sync package dependencies
 if not exist ".venv" (
-    echo [INFO] Creating virtual environment (copy mode)...
-    uv venv --python python --link-mode copy
-    if %errorlevel% neq 0 (
-        echo [WARNING] Standard creation failed. Retrying with --clear...
-        uv venv --python python --link-mode copy --clear
-    )
-    if %errorlevel% neq 0 (
-        echo [WARNING] 'uv venv' failed. Falling back to 'python -m venv'...
-        python -m venv .venv
-    )
+    echo [INFO] Creating virtual environment...
+    uv venv --python python
     if %errorlevel% neq 0 (
         echo [ERROR] Failed to create virtual environment .venv.
-        echo Possible causes:
-        echo 1. Active file locking by OneDrive, antivirus, or another process.
-        echo 2. Windows MAX_PATH (260 chars) limit exceeded. Move to a shallower directory.
-        echo 3. Permission denied in current working directory.
         echo.
         pause
         exit /b %errorlevel%
