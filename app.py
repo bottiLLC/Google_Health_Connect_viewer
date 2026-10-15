@@ -403,12 +403,16 @@ def main() -> None:
 
         col_cred, col_token = st.columns(2)
         with col_cred:
-            if drive_client.has_credentials():
+            if drive_client.is_service_account():
+                st.success("🤖 サービスアカウント認証: 準備完了 (`./data/service_account.json`)")
+            elif drive_client.has_credentials():
                 st.success("✅ OAuth 認証情報: 準備完了 (`./data/credentials.json`)")
             else:
-                st.warning("⚠️ OAuth 認証情報: 未配置 (`./data/credentials.json` が必要)")
+                st.warning("⚠️ 認証情報: 未配置 (`credentials.json` または `service_account.json`)")
         with col_token:
-            if drive_client.has_token():
+            if drive_client.is_service_account():
+                st.info("ℹ️ サービスアカウント認証はブラウザ同意・トークン更新が不要です")
+            elif drive_client.has_token():
                 st.success("✅ Google 認証トークン: 認証済み (`./data/token.json`)")
             else:
                 st.info("ℹ️ Google 認証トークン: 初回同期時にブラウザ認証を実行")

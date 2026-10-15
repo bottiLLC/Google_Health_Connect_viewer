@@ -29,12 +29,14 @@ uv run streamlit run app.py
 | :--- | :--- | :--- |
 | `drive_folder_id` | `""` (`./data/dashboard_settings.json`) | Google ヘルスコネクトの SQLite バックアップが格納されている Google Drive フォルダ ID |
 | `BACKUP_DIR` | `./backups` (`./data/backup_config.json`) | ローカル ZIP バックアップの出力先ディレクトリパス |
+| `service_account.json` | `./data/service_account.json` | Google Cloud サービスアカウント鍵（高度な保護機能プログラム適用アカウント推奨） |
 | `credentials.json` | `./data/credentials.json` | Google Cloud Console (Desktop App) より取得した OAuth 2.0 クライアント認証情報 |
 | `token.json` | `./data/token.json` | 初回ブラウザ認証完了時に自動生成・更新される Google Drive API アクセストークン |
 | `dashboard_settings.json` | `./data/dashboard_settings.json` | タブ表示制御、エグゼクティブサマリー項目、Drive フォルダ ID 等のユーザー永続設定 |
 
 ## Limits & Known Trade-offs
-- **初回 OAuth 認証時のブラウザ待機**: 初回同期時はローカルサーバー経由でブラウザが起動し承認操作を待機（タイムアウト: 120 秒）するため、SSH ポートフォワード等のヘッドレス環境ではあらかじめローカルでトークンを生成しておく必要があります。
+- **Google アカウント高度な保護機能プログラム**: 高度な保護機能が有効なアカウントではサードパーティ OAuth が遮断（`Error 400: policy_enforced`）されるため、サービスアカウントキー（`./data/service_account.json`）を配置し、Drive フォルダを共有する方式を推奨します。
+- **初回 OAuth 認証時のブラウザ待機**: OAuth 利用時の初回同期はローカルサーバー経由でブラウザが起動し承認操作を待機（タイムアウト: 120 秒）するため、ヘッドレス環境ではあらかじめトークンを生成するかサービスアカウントをご利用ください。
 - **SQLite ロック競合**: 差分マージ中は排他書込ロック（`BEGIN IMMEDIATE`）を取得するため、ダッシュボード側の並行クエリは短時間待機となります（完了時に `st.cache_data.clear()` で自動リフレッシュ）。
 - **今後の拡張課題**: 定期タイマーによる完全バックグラウンド自動同期、および差分マージ履歴の詳細監査ログビューワーの実装。
 

@@ -130,6 +130,84 @@ def test_authenticate_run_local_server_success() -> None:
             assert "newly_authorized" in token_file.read_text(encoding="utf-8")
 
 
+def test_authenticate_service_account_via_service_account_file() -> None:
+    """Verify that service_account.json directly instantiates ServiceAccountCredentials."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        sa_file = Path(tmp_dir) / "service_account.json"
+        sa_file.write_text('{"type": "service_account"}', encoding="utf-8")
+        creds_file = Path(tmp_dir) / "credentials.json"
+        token_file = Path(tmp_dir) / "token.json"
+
+        client = GoogleDriveSyncClient(
+            credentials_path=creds_file,
+            token_path=token_file,
+            service_account_path=sa_file,
+        )
+
+        assert client.is_service_account() is True
+        assert client.has_credentials() is True
+        assert client.has_token() is True
+
+        mock_sa_creds = MagicMock()
+        with patch(
+            "drive_sync.ServiceAccountCredentials.from_service_account_file",
+            return_value=mock_sa_creds,
+        ) as mock_from_file:
+            creds = client.authenticate()
+            mock_from_file.assert_called_once_with(
+                str(sa_file), scopes=["https://www.googleapis.com/auth/drive.readonly"]
+            )
+            assert creds == mock_sa_creds
+
+
+def test_authenticate_service_account_via_credentials_file() -> None:
+    """Verify that credentials.json with type=service_account is auto-detected."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        sa_file = Path(tmp_dir) / "non_existent_sa.json"
+        creds_file = Path(tmp_dir) / "credentials.json"
+        creds_file.write_text('{"type": "service_account"}', encoding="utf-8")
+        token_file = Path(tmp_dir) / "token.json"
+
+        client = GoogleDriveSyncClient(
+            credentials_path=creds_file,
+            token_path=token_file,
+            service_account_path=sa_file,
+        )
+
+        assert client.is_service_account() is True
+        assert client.has_credentials() is True
+
+        mock_sa_creds = MagicMock()
+        with patch(
+            "drive_sync.ServiceAccountCredentials.from_service_account_file",
+            return_value=mock_sa_creds,
+        ) as mock_from_file:
+            creds = client.authenticate()
+            mock_from_file.assert_called_once_with(
+                str(creds_file), scopes=["https://www.googleapis.com/auth/drive.readonly"]
+            )
+            assert creds == mock_sa_creds
+
+
+def test_authenticate_service_account_failure_raises_auth_error() -> None:
+    """Verify that exception in ServiceAccountCredentials.from_service_account_file raises DriveAuthError."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        sa_file = Path(tmp_dir) / "service_account.json"
+        sa_file.write_text('{"type": "service_account"}', encoding="utf-8")
+        client = GoogleDriveSyncClient(service_account_path=sa_file)
+
+        with (
+            patch(
+                "drive_sync.ServiceAccountCredentials.from_service_account_file",
+                side_effect=ValueError("Invalid key format"),
+            ),
+            pytest.raises(
+                DriveAuthError, match="サービスアカウント認証情報の読み込みに失敗しました"
+            ),
+        ):
+            client.authenticate()
+
+
 def test_find_latest_sqlite_file_empty_folder_id_raises_value_error() -> None:
     """Verify that empty or whitespace folder_id raises ValueError."""
     # Arrange

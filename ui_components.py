@@ -53,7 +53,9 @@ def render_drive_sync_sidebar() -> None:
 
     client = GoogleDriveSyncClient()
     if not client.has_credentials():
-        st.caption("⚠️ `./data/credentials.json` が未配置です。")
+        st.caption("⚠️ 認証情報 (`credentials.json` または `service_account.json`) が未配置です。")
+    elif client.is_service_account():
+        st.caption("🤖 サービスアカウント認証: 準備完了")
     elif not client.has_token():
         st.caption("ℹ️ 初回実行時にブラウザで Google 認証が必要です。")
     else:
@@ -67,8 +69,8 @@ def render_drive_sync_sidebar() -> None:
 
         if not client.has_credentials():
             st.error(
-                "❌ `./data/credentials.json` が見つかりません。\n"
-                "Google Cloud Console から OAuth クライアント JSON をダウンロードして配置してください。"
+                "❌ 認証情報ファイルが見つかりません。\n"
+                "`./data/service_account.json` または `./data/credentials.json` を配置してください。"
             )
             return
 

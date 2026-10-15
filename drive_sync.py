@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import zipfile
 from collections.abc import Iterator
@@ -10,8 +11,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
+from google.auth.credentials import Credentials as BaseCredentials
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import Resource, build
 from googleapiclient.http import MediaIoBaseDownload
@@ -23,6 +26,7 @@ _SCOPES: Final[list[str]] = ["https://www.googleapis.com/auth/drive.readonly"]
 _ROOT: Final[Path] = Path(__file__).resolve().parent
 _DATA_DIR: Final[Path] = _ROOT / "data"
 _CREDENTIALS_FILE: Final[Path] = _DATA_DIR / "credentials.json"
+_SERVICE_ACCOUNT_FILE: Final[Path] = _DATA_DIR / "service_account.json"
 _TOKEN_FILE: Final[Path] = _DATA_DIR / "token.json"
 
 
@@ -107,15 +111,18 @@ class GoogleDriveSyncClient:
         self,
         credentials_path: Path = _CREDENTIALS_FILE,
         token_path: Path = _TOKEN_FILE,
+        service_account_path: Path = _SERVICE_ACCOUNT_FILE,
     ) -> None:
         """Initialize Drive sync client with deterministic credential paths.
 
         Args:
             credentials_path: Path to OAuth2 client secrets JSON file.
             token_path: Path to cached token JSON file.
+            service_account_path: Path to service account private key JSON file.
         """
         self._credentials_path = credentials_path
         self._token_path = token_path
+        self._service_account_path = service_account_path
 
     @property
     def credentials_path(self) -> Path:
@@ -123,30 +130,67 @@ class GoogleDriveSyncClient:
         return self._credentials_path
 
     @property
+    def service_account_path(self) -> Path:
+        """Return resolved path to service account key file."""
+        return self._service_account_path
+
+    @property
     def token_path(self) -> Path:
         """Return resolved path to OAuth token file."""
         return self._token_path
 
+    def is_service_account(self) -> bool:
+        """Check if active credential target is a Google Cloud Service Account key."""
+        if self._service_account_path.is_file():
+            return True
+        if self._credentials_path.is_file():
+            try:
+                with open(self._credentials_path, encoding="utf-8") as f:
+                    data = json.load(f)
+                return isinstance(data, dict) and data.get("type") == "service_account"
+            except Exception:
+                return False
+        return False
+
     def has_credentials(self) -> bool:
-        """Check if OAuth client secrets file exists on disk."""
-        return self._credentials_path.is_file()
+        """Check if OAuth client secrets file or service account file exists on disk."""
+        return self.is_service_account() or self._credentials_path.is_file()
 
     def has_token(self) -> bool:
-        """Check if cached OAuth token file exists on disk."""
+        """Check if authentication token exists (always True for service account keys)."""
+        if self.is_service_account():
+            return True
         return self._token_path.is_file()
 
-    def authenticate(self, local_server_timeout: int = 120) -> Credentials:
-        """Authenticate user with Google Drive API, refreshing or running local OAuth flow.
+    def authenticate(self, local_server_timeout: int = 120) -> BaseCredentials:
+        """Authenticate with Google Drive API via Service Account or OAuth 2.0 flow.
 
         Args:
             local_server_timeout: Timeout in seconds for waiting on browser authentication callback.
 
         Returns:
-            Authorized google.oauth2.credentials.Credentials instance.
+            Authorized google.auth.credentials.Credentials instance.
 
         Raises:
-            DriveAuthError: If credentials.json is missing or authentication fails.
+            DriveAuthError: If credentials cannot be loaded or authentication fails.
         """
+        if self.is_service_account():
+            target_file = (
+                self._service_account_path
+                if self._service_account_path.is_file()
+                else self._credentials_path
+            )
+            try:
+                sa_creds: BaseCredentials = ServiceAccountCredentials.from_service_account_file(  # type: ignore[no-untyped-call]
+                    str(target_file),
+                    scopes=_SCOPES,
+                )
+                return sa_creds
+            except Exception as exc:
+                raise DriveAuthError(
+                    f"サービスアカウント認証情報の読み込みに失敗しました: {target_file} ({exc!s})"
+                ) from exc
+
         creds: Credentials | None = None
 
         if self._token_path.exists():
@@ -169,7 +213,7 @@ class GoogleDriveSyncClient:
                 if not self._credentials_path.exists():
                     raise DriveAuthError(
                         f"OAuth認証情報ファイルが見つかりません: {self._credentials_path}\n"
-                        "Google Cloud Console からダウンロードした credentials.json を ./data/ 配下に配置してください。"
+                        "Google Cloud Console からダウンロードした credentials.json または service_account.json を ./data/ 配下に配置してください。"
                     )
                 try:
                     flow = InstalledAppFlow.from_client_secrets_file(
