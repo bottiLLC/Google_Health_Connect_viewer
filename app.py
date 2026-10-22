@@ -76,12 +76,16 @@ def main() -> None:
     """Application layout and orchestration entrypoint."""
     st.title("🩺 Google Health Connect 全情報統合ダッシュボード")
     st.caption("Google ヘルスコネクトの SQLite エクスポートデータを全テーブル完全走査・可視化")
+    st.caption("v2.1.0 | Engine: SQLite 3 | Target: health_connect_export.db")
 
     # 1. Resolve database path
     db_file = _ROOT / "data" / "health_connect_export.db"
     if not db_file.exists():
         st.error(
-            f"❌ データベースファイルが見つかりません: {db_file}\n./data/ に配置されているか確認してください。"
+            f"❌ データベースファイルが見つかりません: `{db_file.name}`\n\n"
+            "【解決手順】\n"
+            "1. `./data/health_connect_export.db` に有効な SQLite データベースファイルを配置してください。\n"
+            "2. またはサイドバーから「Google Drive クラウド同期」を実行して最新データを取得してください。"
         )
         render_backup_sidebar()
         return
@@ -91,7 +95,12 @@ def main() -> None:
         engine = _get_database_engine(str(db_file), mtime)
         analytics = HealthConnectAnalyticsService(engine)
     except DatabaseConnectionError as e:
-        st.error(f"❌ データベース接続エラー: {e}")
+        st.error(
+            f"❌ データベース接続エラー: {e!s}\n\n"
+            "【解決手順】\n"
+            "1. `./data/health_connect_export.db` が破損していないか、他のプロセスで排他ロックされていないか確認してください。\n"
+            "2. 必要に応じてバックアップディレクトリから直近の正常ファイルを復元してください。"
+        )
         render_backup_sidebar()
         return
 
@@ -171,169 +180,33 @@ def main() -> None:
         st.session_state["settings_drive_folder_id_input"] = default_settings.drive_folder_id
         st.session_state["settings_flash_message"] = ("✅ 設定を初期値にリセットしました。", False)
 
-    # 2. Sidebar configuration, mode selection, and filters
+    # 2. Sidebar configuration and navigation
     with st.sidebar:
-        st.header("🧭 画面切替 & 表示設定")
+        st.header("🧭 画面切替 & ナビゲーション")
         view_mode = st.radio(
             "表示画面を選択",
             options=["📊 ダッシュボード", "⚙️ 設定画面"],
             index=0,
             key="app_view_mode",
+            help="ダッシュボードの表示とシステム設定画面を切り替えます。",
         )
 
         st.divider()
-        st.header("⚙️ データベース概要 & フィルタ")
+        st.header("📋 データベース概要")
         db_size_mb = db_file.stat().st_size / (1024 * 1024)
-        st.info(f"📂 **DBファイル**: `{db_file.name}` ({db_size_mb:.1f} MB)")
-
         earliest_d, latest_d = analytics.get_database_date_range()
-        selected_start_d: datetime.date | None = None
-        selected_end_d: datetime.date | None = None
-
-        st.subheader("📅 集計対象期間")
-        today_d = datetime.date.today()
-        default_anchor = latest_d if latest_d else today_d
-
-        selected_preset = st.selectbox(
-            "期間プリセット",
-            options=list(PERIOD_PRESETS),
-            index=0,  # "1か月"
-            key="filter_period_preset",
+        st.info(
+            f"📂 **DBファイル**: `{db_file.name}` ({db_size_mb:.1f} MB)\n\n"
+            f"📅 **記録期間**: `{earliest_d or '---'}` 〜 `{latest_d or '---'}`\n\n"
+            f"📊 **総テーブル数**: `77` テーブル"
         )
 
-        custom_y: int | None = None
-        custom_m: int | None = None
-        custom_ey: int | None = None
-        custom_em: int | None = None
-
-        if selected_preset == "年月指定":
-            anchor_year = default_anchor.year
-            anchor_month = default_anchor.month
-
-            is_single_month = st.checkbox(
-                "単一月のみ指定",
-                value=True,
-                key="filter_is_single_month",
-            )
-
-            # 選択可能な年リスト (最新データ/本日+1年から最古データ年または2015年まで)
-            min_y = min(2015, earliest_d.year if earliest_d else 2020)
-            max_y = max(today_d.year + 1, (latest_d.year + 1) if latest_d else 2030)
-            years_list = list(range(max_y, min_y - 1, -1))
-            default_y_idx = years_list.index(anchor_year) if anchor_year in years_list else 0
-
-            if is_single_month:
-                col_y, col_m = st.columns(2)
-                with col_y:
-                    custom_y = st.selectbox(
-                        "対象年",
-                        options=years_list,
-                        index=default_y_idx,
-                        key="filter_single_year",
-                    )
-                with col_m:
-                    custom_m = st.selectbox(
-                        "対象月",
-                        options=list(range(1, 13)),
-                        index=anchor_month - 1,
-                        format_func=lambda m: f"{m}月",
-                        key="filter_single_month",
-                    )
-            else:
-                col_sy, col_sm = st.columns(2)
-                with col_sy:
-                    custom_y = st.selectbox(
-                        "開始年",
-                        options=years_list,
-                        index=default_y_idx,
-                        key="filter_start_year",
-                    )
-                with col_sm:
-                    custom_m = st.selectbox(
-                        "開始月",
-                        options=list(range(1, 13)),
-                        index=0,
-                        format_func=lambda m: f"{m}月",
-                        key="filter_start_month",
-                    )
-
-                col_ey, col_em = st.columns(2)
-                with col_ey:
-                    custom_end_idx = (
-                        years_list.index(anchor_year) if anchor_year in years_list else 0
-                    )
-                    custom_ey = st.selectbox(
-                        "終了年",
-                        options=years_list,
-                        index=custom_end_idx,
-                        key="filter_end_year",
-                    )
-                with col_em:
-                    custom_em = st.selectbox(
-                        "終了月",
-                        options=list(range(1, 13)),
-                        index=anchor_month - 1,
-                        format_func=lambda m: f"{m}月",
-                        key="filter_end_month",
-                    )
-
-            chosen_anchor = default_anchor
-        elif selected_preset != "全期間":
-            if latest_d and today_d > latest_d:
-                anchor_choice = st.radio(
-                    "基準日",
-                    options=["最新データ日", "本日"],
-                    format_func=lambda c: (
-                        f"最新データ ({latest_d})" if c == "最新データ日" else f"本日 ({today_d})"
-                    ),
-                    index=0,
-                    horizontal=True,
-                    key="filter_anchor_choice",
-                )
-                chosen_anchor = latest_d if anchor_choice == "最新データ日" else today_d
-            else:
-                chosen_anchor = default_anchor
-        else:
-            chosen_anchor = default_anchor
-
-        selected_start_d, selected_end_d = resolve_filter_date_range(
-            selected_preset,
-            chosen_anchor,
-            custom_year=custom_y,
-            custom_month=custom_m,
-            custom_end_year=custom_ey,
-            custom_end_month=custom_em,
-        )
-
-        if selected_start_d and selected_end_d:
-            st.caption(f"📅 **適用期間**: `{selected_start_d}` 〜 `{selected_end_d}`")
-            if (
-                earliest_d
-                and latest_d
-                and (selected_start_d < earliest_d or selected_end_d > latest_d)
-            ):
-                st.caption("ℹ️ DB記録期間外が含まれています。期間内の実データを表示します。")
-        elif selected_preset == "全期間":
-            st.caption(f"📅 **全期間**: `{earliest_d or '---'}` 〜 `{latest_d or '---'}`")
-
-        # Applications & Devices filter
-        apps = analytics.get_apps_list()
-        devices = analytics.get_devices_list()
-
-        st.subheader("📱 連携アプリ & 記録元")
-        app_names = {a.row_id: a.app_name or a.package_name for a in apps}
-        selected_apps = st.multiselect(
-            "アプリ絞り込み",
-            options=list(app_names.keys()),
-            format_func=lambda aid: app_names.get(aid, str(aid)),
-            default=[],
-        )
-
-        filter_params = DashboardFilterParams(
-            start_date=selected_start_d,
-            end_date=selected_end_d,
-            selected_app_ids=selected_apps,
-            selected_device_ids=[],
+        st.divider()
+        st.subheader("📖 ヘルプ & システム情報")
+        st.caption(
+            "• エクスポート SQLite DB の全テーブル完全走査\n"
+            "• 日付範囲指定・アプリ別抽出フィルタ対応\n"
+            "• クラウド同期 & ZIP整合性検証バックアップ完備"
         )
 
     # 3. Settings Screen Routing
@@ -354,18 +227,21 @@ def main() -> None:
             options=list(DEFAULT_VISIBLE_TABS),
             default=[t for t in settings.visible_tabs if t in DEFAULT_VISIBLE_TABS],
             key="settings_tabs_multiselect",
+            help="表示したいダッシュボードのタブを選択してください。",
         )
 
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             st.button(
                 "全タブを表示",
+                type="secondary",
                 use_container_width=True,
                 on_click=_apply_all_tabs_preset,
             )
         with col_btn2:
             st.button(
                 "最小構成 (サマリー・睡眠・バイタル)",
+                type="secondary",
                 use_container_width=True,
                 on_click=_apply_minimal_tabs_preset,
             )
@@ -385,6 +261,7 @@ def main() -> None:
             ),
             default=[k for k in settings.visible_summary_items if k in summary_options],
             key="settings_summary_items_multiselect",
+            help="サマリー画面に表示するKPIメトリクスや要約グラフを選択します。",
         )
 
         st.divider()
@@ -418,23 +295,166 @@ def main() -> None:
                 st.info("ℹ️ Google 認証トークン: 初回同期時にブラウザ認証を実行")
 
         st.divider()
-        col_save, col_reset = st.columns(2)
-        with col_save:
-            st.button(
-                "💾 設定を保存して適用",
-                use_container_width=True,
-                type="primary",
-                on_click=_save_and_apply_settings,
-            )
-        with col_reset:
-            st.button(
-                "🔄 初期設定に戻す",
-                use_container_width=True,
-                on_click=_reset_to_default_settings,
-            )
+        st.button(
+            "💾 設定を保存して適用",
+            use_container_width=True,
+            type="primary",
+            on_click=_save_and_apply_settings,
+        )
+
+        st.divider()
+        st.subheader("4. 🔄 初期設定リセット")
+        confirm_reset = st.checkbox(
+            "初期設定へのリセットを確定する",
+            key="chk_confirm_reset",
+            help="表示タブ・サマリー項目の選択状態を初期デフォルトへ復元します。",
+        )
+        st.button(
+            "🔄 初期設定に戻す",
+            use_container_width=True,
+            type="secondary",
+            disabled=not confirm_reset,
+            on_click=_reset_to_default_settings,
+        )
 
         render_backup_sidebar()
         return
+
+    # 4. Main Dashboard Filter Section (Mandatory st.form to eliminate redundant reruns)
+    today_d = datetime.date.today()
+    default_anchor = latest_d if latest_d else today_d
+
+    # Guarantee initial filter state on first page load
+    if "active_filter_params" not in st.session_state:
+        init_s, init_e = resolve_filter_date_range("1か月", default_anchor)
+        st.session_state["active_filter_params"] = DashboardFilterParams(
+            start_date=init_s,
+            end_date=init_e,
+            selected_app_ids=[],
+            selected_device_ids=[],
+        )
+        st.session_state["active_period_caption"] = (
+            f"📅 **適用期間 (初期値: 1か月)**: `{init_s}` 〜 `{init_e}`"
+        )
+
+    apps = analytics.get_apps_list()
+    app_names = {a.row_id: a.app_name or a.package_name for a in apps}
+
+    with st.expander("🔍 抽出条件・期間フィルタ", expanded=True):
+        with st.form("dashboard_filter_form"):
+            col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
+
+            with col_f1:
+                selected_preset = st.selectbox(
+                    "期間プリセット",
+                    options=list(PERIOD_PRESETS),
+                    index=0,  # "1か月"
+                    key="filter_period_preset",
+                    help="集計対象とする期間のプリセットを選択します。",
+                )
+
+            with col_f2:
+                custom_y: int | None = None
+                custom_m: int | None = None
+                custom_ey: int | None = None
+                custom_em: int | None = None
+                chosen_anchor: datetime.date = default_anchor
+
+                if selected_preset == "年月指定":
+                    anchor_year = default_anchor.year
+                    anchor_month = default_anchor.month
+                    min_y = min(2015, earliest_d.year if earliest_d else 2020)
+                    max_y = max(today_d.year + 1, (latest_d.year + 1) if latest_d else 2030)
+                    years_list = list(range(max_y, min_y - 1, -1))
+                    default_y_idx = (
+                        years_list.index(anchor_year) if anchor_year in years_list else 0
+                    )
+
+                    col_y, col_m = st.columns(2)
+                    with col_y:
+                        custom_y = st.selectbox(
+                            "対象年",
+                            options=years_list,
+                            index=default_y_idx,
+                            key="filter_single_year",
+                            help="集計対象の年を選択します。",
+                        )
+                    with col_m:
+                        custom_m = st.selectbox(
+                            "対象月",
+                            options=list(range(1, 13)),
+                            index=anchor_month - 1,
+                            format_func=lambda m: f"{m}月",
+                            key="filter_single_month",
+                            help="集計対象の月を選択します。",
+                        )
+                elif selected_preset != "全期間":
+                    if latest_d and today_d > latest_d:
+                        anchor_choice = st.radio(
+                            "基準日",
+                            options=["最新データ日", "本日"],
+                            format_func=lambda c: (
+                                f"最新データ ({latest_d})"
+                                if c == "最新データ日"
+                                else f"本日 ({today_d})"
+                            ),
+                            index=0,
+                            horizontal=True,
+                            key="filter_anchor_choice",
+                            help="過去N日の起点となる基準日を選択します。",
+                        )
+                        chosen_anchor = latest_d if anchor_choice == "最新データ日" else today_d
+                    else:
+                        chosen_anchor = default_anchor
+
+            with col_f3:
+                selected_apps = st.multiselect(
+                    "アプリ絞り込み",
+                    options=list(app_names.keys()),
+                    format_func=lambda aid: app_names.get(aid, str(aid)),
+                    default=[],
+                    help="特定のアプリで記録されたデータのみを抽出します（空欄で全アプリ対象）。",
+                )
+
+            submit_filter = st.form_submit_button(
+                "🔍 フィルタを適用して集計", type="primary", use_container_width=True
+            )
+
+        if submit_filter:
+            new_start_d, new_end_d = resolve_filter_date_range(
+                selected_preset,
+                chosen_anchor,
+                custom_year=custom_y,
+                custom_month=custom_m,
+                custom_end_year=custom_ey,
+                custom_end_month=custom_em,
+            )
+            # Fail-fast input validation
+            if new_start_d and new_end_d and new_start_d > new_end_d:
+                st.error(
+                    f"❌ 期間指定エラー: 開始日（{new_start_d}）が終了日（{new_end_d}）より未来に設定されています。\n\n"
+                    "【解決手順】対象年月の指定を見直して再度集計を実行してください。"
+                )
+                st.stop()
+
+            st.session_state["active_filter_params"] = DashboardFilterParams(
+                start_date=new_start_d,
+                end_date=new_end_d,
+                selected_app_ids=selected_apps,
+                selected_device_ids=[],
+            )
+            if new_start_d and new_end_d:
+                st.session_state["active_period_caption"] = (
+                    f"📅 **適用期間 ({selected_preset})**: `{new_start_d}` 〜 `{new_end_d}`"
+                )
+            elif selected_preset == "全期間":
+                st.session_state["active_period_caption"] = (
+                    f"📅 **適用期間**: 全期間 (`{earliest_d or '---'}` 〜 `{latest_d or '---'}`)"
+                )
+
+    filter_params: DashboardFilterParams = st.session_state["active_filter_params"]
+    if "active_period_caption" in st.session_state:
+        st.caption(st.session_state["active_period_caption"])
 
     # 4. Main dashboard tab routing
     active_tabs = [t for t in DEFAULT_VISIBLE_TABS if t in settings.visible_tabs]
@@ -758,6 +778,7 @@ def main() -> None:
     if "📱 デバイス・監査" in tab_map:
         with tab_map["📱 デバイス・監査"]:
             st.subheader("📱 連携アプリ・登録デバイス & 読取監査ログ")
+            devices = analytics.get_devices_list()
             col_dev1, col_dev2 = st.columns(2)
             with col_dev1:
                 st.markdown("#### 登録アプリケーション")

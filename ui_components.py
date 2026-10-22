@@ -40,7 +40,7 @@ def render_drive_sync_sidebar() -> None:
         help="SQLiteバックアップが格納されている Google Drive フォルダの ID",
     )
     if folder_id != settings.drive_folder_id and st.button(
-        "フォルダ ID を保存", use_container_width=True
+        "フォルダ ID を保存", type="secondary", use_container_width=True
     ):
         new_settings = DashboardSettings(
             visible_tabs=settings.visible_tabs,
@@ -61,7 +61,17 @@ def render_drive_sync_sidebar() -> None:
     else:
         st.caption("✅ Google Drive 認証済み")
 
-    if st.button("Driveから最新データを同期", use_container_width=True):
+    confirm_sync = st.checkbox(
+        "Google Drive からのダウンロードと差分マージを確定する",
+        key="chk_confirm_drive_sync",
+        help="クラウド上の最新バックアップを取得し、ローカルDBへ安全に差分マージします。",
+    )
+    if st.button(
+        "Driveから最新データを同期",
+        type="secondary",
+        disabled=not confirm_sync,
+        use_container_width=True,
+    ):
         target_folder = folder_id.strip() or settings.drive_folder_id.strip()
         if not target_folder:
             st.warning("⚠️ Google Drive フォルダ ID を設定してください。")
@@ -70,7 +80,7 @@ def render_drive_sync_sidebar() -> None:
         if not client.has_credentials():
             st.error(
                 "❌ 認証情報ファイルが見つかりません。\n"
-                "`./data/service_account.json` または `./data/credentials.json` を配置してください。"
+                "【解決手順】`./data/service_account.json` または `./data/credentials.json` を配置してください。"
             )
             return
 
@@ -90,23 +100,41 @@ def render_drive_sync_sidebar() -> None:
                     result = merger.merge_from_temp_db(temp_db, source_file_name=latest_file.name)
 
             if result.success:
-                st.success(result.message)
+                st.success(f"✅ {result.message} (マージ件数: {result.total_rows_merged} 件)")
                 st.toast(f"同期成功: 新規 {result.total_rows_merged} 件を追加しました", icon="✅")
                 st.cache_data.clear()
                 st.rerun()
             else:
-                st.error(f"❌ 同期失敗: {result.message}")
+                st.error(
+                    f"❌ 同期失敗: {result.message}\n"
+                    "【解決手順】ダウンロードしたSQLiteファイルのテーブル構造が適合しているか確認してください。"
+                )
 
         except DriveAuthError as e:
-            st.error(f"❌ 認証エラー: {e!s}")
+            st.error(
+                f"❌ 認証エラー: {e!s}\n"
+                "【解決手順】`./data/credentials.json` の設定またはトークン (`token.json`) を再生成してください。"
+            )
         except DriveFileNotFoundError as e:
-            st.error(f"❌ ファイル未検出: {e!s}")
+            st.error(
+                f"❌ ファイル未検出: {e!s}\n"
+                "【解決手順】Google Drive フォルダ ID が正しいか、フォルダ内にバックアップが存在するか確認してください。"
+            )
         except DatabaseMergeError as e:
-            st.error(f"❌ データベースマージエラー: {e!s}")
+            st.error(
+                f"❌ データベースマージエラー: {e!s}\n"
+                "【解決手順】SQLiteデータベースの整合性を確認してください。"
+            )
         except DriveSyncError as e:
-            st.error(f"❌ Google Drive エラー: {e!s}")
+            st.error(
+                f"❌ Google Drive エラー: {e!s}\n"
+                "【解決手順】ネットワーク接続または Google Drive API の有効化状況を確認してください。"
+            )
         except Exception as e:
-            st.error(f"❌ 予期せぬエラーが発生しました: {e!s}")
+            st.error(
+                f"❌ 予期せぬエラーが発生しました: {e!s}\n"
+                "【解決手順】アプリケーションログを確認してください。"
+            )
 
 
 def render_backup_sidebar() -> None:
@@ -118,24 +146,44 @@ def render_backup_sidebar() -> None:
         st.subheader("データ保護・ローカルバックアップ")
 
         current_dir = str(get_backup_dir())
-        new_dir = st.text_input("バックアップ先フォルダ", value=current_dir)
-        if new_dir != current_dir and st.button("保存先パスを更新", use_container_width=True):
+        new_dir = st.text_input(
+            "バックアップ先フォルダ",
+            value=current_dir,
+            help="ZIPバックアップの保存先ディレクトリパスを指定します。",
+        )
+        if new_dir != current_dir and st.button(
+            "保存先パスを更新", type="secondary", use_container_width=True
+        ):
             save_res = set_backup_dir(new_dir)
             if save_res["success"]:
                 st.success(str(save_res["message"]))
                 st.rerun()
             else:
-                st.error(str(save_res["message"]))
+                st.error(
+                    f"❌ {save_res['message']}\n【解決手順】指定パスの書き込み権限を確認してください。"
+                )
 
-        if st.button("今すぐバックアップを実行", use_container_width=True):
+        confirm_backup = st.checkbox(
+            "ローカルデータベースの完全ZIPバックアップ生成を確定する",
+            key="chk_confirm_local_backup",
+            help="現在の ./data 領域の整合性検証およびZIPアーカイブ生成を行います。",
+        )
+        if st.button(
+            "今すぐバックアップを実行",
+            type="secondary",
+            disabled=not confirm_backup,
+            use_container_width=True,
+        ):
             with st.spinner("圧縮・整合性検証中..."):
                 res = run_backup(app_name="health_viewer")
             if res["success"]:
-                st.success(str(res["message"]))
+                st.success(f"✅ {res['message']}")
                 st.caption(f"完了日時: {res['timestamp']}")
                 st.caption(f"保存先: {res['destination']}")
             else:
-                st.error(str(res["message"]))
+                st.error(
+                    f"❌ {res['message']}\n【解決手順】ディスク空き容量および書き込み権限を確認してください。"
+                )
 
 
 def build_activity_composite_chart(summaries: Sequence[DailyActivitySummary]) -> go.Figure:

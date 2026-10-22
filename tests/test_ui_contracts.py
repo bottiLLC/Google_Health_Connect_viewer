@@ -376,3 +376,61 @@ def test_app_summary_tab_all_excerpt_charts_render() -> None:
     # Switch back to Dashboard view
     at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
     assert not at.exception
+
+
+def test_app_dashboard_filter_form_submission() -> None:
+    """Verify that filter form submits cleanly and updates active filter params."""
+    live_db = Path(__file__).resolve().parent.parent / "data" / "health_connect_export.db"
+    if not live_db.exists():
+        pytest.skip("Live database not available for AppTest")
+
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(
+        str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
+    )
+    at.run()
+    assert not at.exception
+
+    # Verify form exists and contains preset selectbox
+    preset_box = at.selectbox(key="filter_period_preset")
+    assert preset_box is not None
+    preset_box.set_value("全期間")
+
+    # Find and click form submit button
+    filter_submit = next((b for b in at.button if "フィルタを適用して集計" in b.label), None)
+    assert filter_submit is not None
+    filter_submit.click().run()
+    assert not at.exception
+    assert not at.error
+
+
+def test_2step_confirmation_checkboxes_rendered() -> None:
+    """Verify 2-step confirmation checkboxes exist in backup and settings screens."""
+    live_db = Path(__file__).resolve().parent.parent / "data" / "health_connect_export.db"
+    if not live_db.exists():
+        pytest.skip("Live database not available for AppTest")
+
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(
+        str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
+    )
+    at.run()
+    assert not at.exception
+
+    # Check local backup and drive sync confirm checkboxes in sidebar
+    chk_backup = at.checkbox(key="chk_confirm_local_backup")
+    assert chk_backup is not None
+    assert chk_backup.value is False
+
+    chk_sync = at.checkbox(key="chk_confirm_drive_sync")
+    assert chk_sync is not None
+    assert chk_sync.value is False
+
+    # Switch to settings screen and verify reset confirm checkbox
+    at.radio(key="app_view_mode").set_value("⚙️ 設定画面").run()
+    assert not at.exception
+    chk_reset = at.checkbox(key="chk_confirm_reset")
+    assert chk_reset is not None
+    assert chk_reset.value is False
