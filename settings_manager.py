@@ -10,9 +10,14 @@ import json
 from pathlib import Path
 from typing import Final
 
+import structlog
+
 from domain_models import DashboardSettings
 
-_SETTINGS_FILE: Final[Path] = Path(__file__).resolve().parent / "data" / "dashboard_settings.json"
+_ROOT: Final[Path] = Path(__file__).resolve().parent
+_SETTINGS_FILE: Final[Path] = _ROOT / "data" / "dashboard_settings.json"
+
+logger = structlog.get_logger(__name__)
 
 
 def get_settings_file_path() -> Path:
@@ -27,15 +32,20 @@ def load_dashboard_settings() -> DashboardSettings:
         DashboardSettings instance loaded from file, or default settings if file is absent or corrupted.
     """
     if not _SETTINGS_FILE.exists():
+        logger.debug("settings_file_not_found_using_defaults", path=str(_SETTINGS_FILE))
         return DashboardSettings()
 
     try:
         content = _SETTINGS_FILE.read_text(encoding="utf-8")
         data = json.loads(content)
         if not isinstance(data, dict):
+            logger.warning("settings_data_not_dict_using_defaults", path=str(_SETTINGS_FILE))
             return DashboardSettings()
         return DashboardSettings.model_validate(data)
-    except OSError, json.JSONDecodeError, ValueError:
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        logger.warning(
+            "settings_load_failed_using_defaults", path=str(_SETTINGS_FILE), error=str(e)
+        )
         return DashboardSettings()
 
 
@@ -53,8 +63,10 @@ def save_dashboard_settings(settings: DashboardSettings) -> bool:
         temp_file = _SETTINGS_FILE.with_suffix(".tmp")
         temp_file.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
         temp_file.replace(_SETTINGS_FILE)
+        logger.info("settings_saved_successfully", path=str(_SETTINGS_FILE))
         return True
-    except OSError:
+    except OSError as e:
+        logger.error("settings_save_failed", path=str(_SETTINGS_FILE), error=str(e))
         return False
 
 
@@ -66,4 +78,5 @@ def reset_dashboard_settings() -> DashboardSettings:
     """
     default_settings = DashboardSettings()
     save_dashboard_settings(default_settings)
+    logger.info("settings_reset_to_default", path=str(_SETTINGS_FILE))
     return default_settings

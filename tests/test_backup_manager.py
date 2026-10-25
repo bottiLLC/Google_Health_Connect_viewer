@@ -15,7 +15,7 @@ def test_get_backup_dir_default_when_no_config(tmp_path: Path) -> None:
         patch.dict("os.environ", {}, clear=True),
     ):
         res = get_backup_dir()
-        assert res == Path("./backups").resolve()
+        assert res == (Path(__file__).resolve().parent.parent / "backups").resolve()
 
 
 def test_get_backup_dir_from_config(tmp_path: Path) -> None:

@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
+import structlog
 from google.auth.credentials import Credentials as BaseCredentials
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -28,6 +29,8 @@ _DATA_DIR: Final[Path] = _ROOT / "data"
 _CREDENTIALS_FILE: Final[Path] = _DATA_DIR / "credentials.json"
 _SERVICE_ACCOUNT_FILE: Final[Path] = _DATA_DIR / "service_account.json"
 _TOKEN_FILE: Final[Path] = _DATA_DIR / "token.json"
+
+logger = structlog.get_logger(__name__)
 
 
 class DriveSyncError(Exception):

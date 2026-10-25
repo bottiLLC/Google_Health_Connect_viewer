@@ -8,6 +8,8 @@ import sqlite3
 from pathlib import Path
 from typing import Final
 
+import structlog
+
 from backup_manager import run_backup
 from domain_models import DriveSyncResult, TableMergeStat
 
@@ -22,6 +24,8 @@ _EXCLUDED_SYSTEM_TABLES: Final[frozenset[str]] = frozenset(
         "pre_migration_category_priority_table",
     }
 )
+
+logger = structlog.get_logger(__name__)
 
 
 class DatabaseMergeError(Exception):

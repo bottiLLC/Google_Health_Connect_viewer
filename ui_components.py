@@ -40,7 +40,7 @@ def render_drive_sync_sidebar() -> None:
         help="SQLiteバックアップが格納されている Google Drive フォルダの ID",
     )
     if folder_id != settings.drive_folder_id and st.button(
-        "フォルダ ID を保存", type="secondary", use_container_width=True
+        "フォルダ ID を保存", type="secondary", icon=":material/save:", width="stretch"
     ):
         new_settings = DashboardSettings(
             visible_tabs=settings.visible_tabs,
@@ -69,8 +69,9 @@ def render_drive_sync_sidebar() -> None:
     if st.button(
         "Driveから最新データを同期",
         type="secondary",
+        icon=":material/sync:",
         disabled=not confirm_sync,
-        use_container_width=True,
+        width="stretch",
     ):
         target_folder = folder_id.strip() or settings.drive_folder_id.strip()
         if not target_folder:
@@ -154,7 +155,7 @@ def render_backup_sidebar() -> None:
             help="ZIPバックアップの保存先ディレクトリパスを指定します。",
         )
         if new_dir != current_dir and st.button(
-            "保存先パスを更新", type="secondary", use_container_width=True
+            "保存先パスを更新", type="secondary", icon=":material/folder_open:", width="stretch"
         ):
             save_res = set_backup_dir(new_dir)
             if save_res["success"]:
@@ -173,8 +174,9 @@ def render_backup_sidebar() -> None:
         if st.button(
             "今すぐバックアップを実行",
             type="secondary",
+            icon=":material/backup:",
             disabled=not confirm_backup,
-            use_container_width=True,
+            width="stretch",
         ):
             with st.spinner("圧縮・整合性検証中..."):
                 res = run_backup(app_name="health_viewer")
@@ -580,9 +582,10 @@ def render_schema_table(columns: Sequence[ColumnMeta]) -> None:
         }
         for c in columns
     ]
-    st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(data), width="stretch", hide_index=True)
 
 
+@st.fragment
 def render_paginated_table(
     df: pd.DataFrame,
     table_name: str,
@@ -593,28 +596,27 @@ def render_paginated_table(
         st.info(f"テーブル「{table_name}」には表示可能なレコードがありません（0件）。")
         return
 
-    col_info, col_csv, col_json = st.columns([3, 1, 1])
-    with col_info:
+    with st.container(horizontal=True, horizontal_alignment="right"):
         st.caption(f"表示件数: {len(df):,} 行 / 全 {len(df.columns)} 列")
-    with col_csv:
         csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
-            label="📥 CSV ダウンロード",
+            label="CSV",
+            icon=":material/download:",
             data=csv_bytes,
             file_name=f"{table_name}_export.csv",
             mime="text/csv",
             key=f"{key_prefix}_csv",
-            use_container_width=True,
+            width="content",
         )
-    with col_json:
         json_bytes = df.to_json(orient="records", force_ascii=False, indent=2).encode("utf-8")
         st.download_button(
-            label="📥 JSON ダウンロード",
+            label="JSON",
+            icon=":material/download:",
             data=json_bytes,
             file_name=f"{table_name}_export.json",
             mime="application/json",
             key=f"{key_prefix}_json",
-            use_container_width=True,
+            width="content",
         )
 
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)

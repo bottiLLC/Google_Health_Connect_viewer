@@ -7,9 +7,10 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pandas as pd
+import structlog
 
 from domain_models import (
     ColumnMeta,
@@ -18,7 +19,8 @@ from domain_models import (
     resolve_category_for_table,
 )
 
-_JST = timezone(timedelta(hours=9))
+_JST: Final[timezone] = timezone(timedelta(hours=9))
+logger = structlog.get_logger(__name__)
 
 
 class DatabaseConnectionError(Exception):

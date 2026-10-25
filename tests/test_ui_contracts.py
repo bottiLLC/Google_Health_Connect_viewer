@@ -177,7 +177,8 @@ def test_render_schema_and_paginated_tables() -> None:
 
     df = pd.DataFrame([{"id": 1, "name": "test"}])
     with patch("streamlit.dataframe") as mock_df, patch("streamlit.download_button"):
-        render_paginated_table(df, "test_table", "prefix")
+        fn = getattr(render_paginated_table, "__wrapped__", render_paginated_table)
+        fn(df, "test_table", "prefix")
         assert mock_df.called
 
 
@@ -434,3 +435,21 @@ def test_2step_confirmation_checkboxes_rendered() -> None:
     chk_reset = at.checkbox(key="chk_confirm_reset")
     assert chk_reset is not None
     assert chk_reset.value is False
+
+
+def test_ban_use_container_width_ast() -> None:
+    """Verify 0 occurrences of deprecated use_container_width across all repository python files."""
+    repo_root = Path(__file__).resolve().parent.parent
+    py_files = list(repo_root.glob("*.py")) + list((repo_root / "tests").glob("*.py"))
+
+    violations: list[str] = []
+    for py_file in py_files:
+        tree = ast.parse(py_file.read_text(encoding="utf-8"), filename=str(py_file))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                for kw in node.keywords:
+                    if kw.arg == "use_container_width":
+                        violations.append(
+                            f"{py_file.name}:{node.lineno} uses deprecated 'use_container_width'"
+                        )
+    assert not violations, f"Found use_container_width usages: {violations}"

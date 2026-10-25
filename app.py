@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
+import datetime
 import sys
 from pathlib import Path
+from typing import Final
 
 # Ensure deterministic root path resolution regardless of launcher execution context
-_ROOT = Path(__file__).resolve().parent
+_ROOT: Final[Path] = Path(__file__).resolve().parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-import datetime
-
 import pandas as pd
 import streamlit as st
+import structlog
 
 from analytics_service import HealthConnectAnalyticsService
 from db_engine import DatabaseConnectionError, HealthConnectDbEngine
@@ -48,13 +49,7 @@ from ui_components import (
     render_schema_table,
 )
 
-# Page configuration
-st.set_page_config(
-    page_title="Google Health Connect Viewer",
-    page_icon="🩺",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+logger = structlog.get_logger(__name__)
 
 
 @st.cache_data(show_spinner=False)
@@ -74,6 +69,13 @@ def _get_catalog_cached(db_path_str: str, file_mtime: float) -> list[TableCatalo
 
 def main() -> None:
     """Application layout and orchestration entrypoint."""
+    st.set_page_config(
+        page_title="Google Health Connect Viewer",
+        page_icon="🩺",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
     st.title("🩺 Google Health Connect 全情報統合ダッシュボード")
     st.caption("Google ヘルスコネクトの SQLite エクスポートデータを全テーブル完全走査・可視化")
     st.caption("v2.1.0 | Engine: SQLite 3 | Target: health_connect_export.db")
@@ -235,14 +237,16 @@ def main() -> None:
             st.button(
                 "全タブを表示",
                 type="secondary",
-                use_container_width=True,
+                icon=":material/visibility:",
+                width="stretch",
                 on_click=_apply_all_tabs_preset,
             )
         with col_btn2:
             st.button(
                 "最小構成 (サマリー・睡眠・バイタル)",
                 type="secondary",
-                use_container_width=True,
+                icon=":material/visibility:",
+                width="stretch",
                 on_click=_apply_minimal_tabs_preset,
             )
 
@@ -296,9 +300,10 @@ def main() -> None:
 
         st.divider()
         st.button(
-            "💾 設定を保存して適用",
-            use_container_width=True,
+            "設定を保存して適用",
+            width="stretch",
             type="primary",
+            icon=":material/save:",
             on_click=_save_and_apply_settings,
         )
 
@@ -310,9 +315,10 @@ def main() -> None:
             help="表示タブ・サマリー項目の選択状態を初期デフォルトへ復元します。",
         )
         st.button(
-            "🔄 初期設定に戻す",
-            use_container_width=True,
+            "初期設定に戻す",
+            width="stretch",
             type="secondary",
+            icon=":material/restart_alt:",
             disabled=not confirm_reset,
             on_click=_reset_to_default_settings,
         )
@@ -341,7 +347,7 @@ def main() -> None:
     app_names = {a.row_id: a.app_name or a.package_name for a in apps}
 
     with st.expander("🔍 抽出条件・期間フィルタ", expanded=True):
-        with st.form("dashboard_filter_form"):
+        with st.form("dashboard_filter_form", border=True):
             col_f1, col_f2, col_f3 = st.columns([1, 1, 1])
 
             with col_f1:
@@ -417,7 +423,7 @@ def main() -> None:
                 )
 
             submit_filter = st.form_submit_button(
-                "🔍 フィルタを適用して集計", type="primary", use_container_width=True
+                "フィルタを適用して集計", type="primary", icon=":material/search:", width="stretch"
             )
 
         if submit_filter:
@@ -510,7 +516,7 @@ def main() -> None:
                 cols = st.columns(len(metric_items))
                 for col, (label, val, delta) in zip(cols, metric_items, strict=True):
                     with col:
-                        st.metric(label, val, delta=delta)
+                        st.metric(label, val, delta=delta, border=True)
 
             has_charts = False
 
@@ -518,7 +524,7 @@ def main() -> None:
                 has_charts = True
                 st.plotly_chart(
                     build_activity_composite_chart(daily_acts),
-                    use_container_width=True,
+                    width="stretch",
                     key="overview_activity_composite_chart",
                 )
 
@@ -526,7 +532,7 @@ def main() -> None:
                 has_charts = True
                 st.plotly_chart(
                     build_calories_chart(daily_acts),
-                    use_container_width=True,
+                    width="stretch",
                     key="overview_calories_chart",
                 )
 
@@ -534,7 +540,7 @@ def main() -> None:
                 has_charts = True
                 st.plotly_chart(
                     build_body_measurement_chart(df_body),
-                    use_container_width=True,
+                    width="stretch",
                     key="overview_body_measurement_chart",
                 )
 
@@ -543,7 +549,7 @@ def main() -> None:
                 daily_sleep = analytics.get_daily_sleep_summary(filter_params)
                 st.plotly_chart(
                     build_daily_sleep_trend_chart(daily_sleep),
-                    use_container_width=True,
+                    width="stretch",
                     key="overview_daily_sleep_trend_chart",
                 )
 
@@ -565,14 +571,14 @@ def main() -> None:
                     with col_ov1:
                         st.plotly_chart(
                             build_heart_rate_chart(df_hr),
-                            use_container_width=True,
+                            width="stretch",
                             key="overview_heart_rate_chart",
                         )
                 if col_ov2 is not None:
                     with col_ov2:
                         st.plotly_chart(
                             build_oxygen_saturation_chart(df_o2),
-                            use_container_width=True,
+                            width="stretch",
                             key="overview_oxygen_saturation_chart",
                         )
 
@@ -590,12 +596,12 @@ def main() -> None:
             daily_acts = analytics.get_daily_activity_summary(filter_params)
             st.plotly_chart(
                 build_activity_composite_chart(daily_acts),
-                use_container_width=True,
+                width="stretch",
                 key="activity_composite_chart",
             )
             st.plotly_chart(
                 build_calories_chart(daily_acts),
-                use_container_width=True,
+                width="stretch",
                 key="activity_calories_chart",
             )
 
@@ -643,7 +649,7 @@ def main() -> None:
             else:
                 st.plotly_chart(
                     build_body_measurement_chart(df_body),
-                    use_container_width=True,
+                    width="stretch",
                     key="body_measurement_chart",
                 )
                 st.subheader("測定レコード一覧")
@@ -661,7 +667,7 @@ def main() -> None:
             daily_sleep = analytics.get_daily_sleep_summary(filter_params)
             st.plotly_chart(
                 build_daily_sleep_trend_chart(daily_sleep),
-                use_container_width=True,
+                width="stretch",
                 key="daily_sleep_trend_chart",
             )
 
@@ -682,7 +688,7 @@ def main() -> None:
 
                 st.plotly_chart(
                     build_sleep_stages_chart(cur_sleep.stages),
-                    use_container_width=True,
+                    width="stretch",
                     key="sleep_stages_chart",
                 )
 
@@ -695,7 +701,7 @@ def main() -> None:
                     }
                     for stg in cur_sleep.stages
                 ]
-                st.dataframe(pd.DataFrame(stage_summary), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(stage_summary), width="stretch", hide_index=True)
 
     # ==========================================
     # Tab 5: バイタル
@@ -710,13 +716,13 @@ def main() -> None:
             with col_v1:
                 st.plotly_chart(
                     build_heart_rate_chart(df_hr),
-                    use_container_width=True,
+                    width="stretch",
                     key="heart_rate_chart",
                 )
             with col_v2:
                 st.plotly_chart(
                     build_oxygen_saturation_chart(df_o2),
-                    use_container_width=True,
+                    width="stretch",
                     key="oxygen_saturation_chart",
                 )
 
@@ -730,7 +736,7 @@ def main() -> None:
                         )
                     st.dataframe(
                         low_events[["datetime", "percentage"]],
-                        use_container_width=True,
+                        width="stretch",
                         hide_index=True,
                     )
 
@@ -784,14 +790,14 @@ def main() -> None:
                 st.markdown("#### 登録アプリケーション")
                 st.dataframe(
                     pd.DataFrame([a.model_dump() for a in apps]),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
             with col_dev2:
                 st.markdown("#### 登録デバイス")
                 st.dataframe(
                     pd.DataFrame([d.model_dump() for d in devices]),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                 )
 
@@ -824,7 +830,7 @@ def main() -> None:
                     for c in catalog_items
                 ]
             )
-            st.dataframe(df_catalog, use_container_width=True, hide_index=True)
+            st.dataframe(df_catalog, width="stretch", hide_index=True)
 
             st.divider()
             st.subheader("動的テーブルプレビュー & カラムスキーマ")

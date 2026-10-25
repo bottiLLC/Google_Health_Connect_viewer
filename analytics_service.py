@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 
 import pandas as pd
+import structlog
 
 from db_engine import HealthConnectDbEngine
 from domain_models import (
@@ -21,6 +22,8 @@ from domain_models import (
     SleepSessionDetail,
     SleepStageInterval,
 )
+
+logger = structlog.get_logger(__name__)
 
 
 class HealthConnectAnalyticsService:
