@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import sqlite3
 from pathlib import Path
 
@@ -203,6 +204,31 @@ def test_get_database_date_range(analytics_mock_db: Path) -> None:
     assert start_d is not None
     assert end_d is not None
     assert start_d <= end_d
+
+
+def test_get_database_date_range_multi_table_scan(tmp_path: Path) -> None:
+    """Verify that latest date detection correctly inspects non-step tables when steps table is outdated."""
+    db_file = tmp_path / "multi_table_test.db"
+    conn = sqlite3.connect(db_file)
+    cur = conn.cursor()
+    # steps record only on 2024-10-23 (1729641600000 = 2024-10-23 00:00:00 UTC)
+    cur.execute(
+        "CREATE TABLE steps_record_table (row_id INTEGER PRIMARY KEY, count INTEGER, start_time INTEGER);"
+    )
+    cur.execute("INSERT INTO steps_record_table VALUES (1, 5000, 1729641600000);")
+    # sleep session on 2024-10-24 (1729728000000 = 2024-10-24 00:00:00 UTC)
+    cur.execute(
+        "CREATE TABLE sleep_session_record_table (row_id INTEGER PRIMARY KEY, start_time INTEGER, end_time INTEGER);"
+    )
+    cur.execute("INSERT INTO sleep_session_record_table VALUES (1, 1729728000000, 1729756800000);")
+    conn.commit()
+    conn.close()
+
+    engine = HealthConnectDbEngine(db_file)
+    service = HealthConnectAnalyticsService(engine)
+    start_d, end_d = service.get_database_date_range()
+    assert start_d == datetime.date(2024, 10, 23)
+    assert end_d == datetime.date(2024, 10, 24)
 
 
 def test_get_daily_activity_summary(analytics_mock_db: Path) -> None:

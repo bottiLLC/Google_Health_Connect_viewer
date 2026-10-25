@@ -272,6 +272,8 @@ class GoogleDriveSyncClient:
                     orderBy="modifiedTime desc",
                     pageSize=20,
                     fields="files(id, name, modifiedTime, size, mimeType)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
                 )
                 .execute()
             )
@@ -337,7 +339,7 @@ class GoogleDriveSyncClient:
             Path to downloaded (or extracted) valid SQLite database file.
         """
         service = self.get_drive_service()
-        request = service.files().get_media(fileId=file_id)
+        request = service.files().get_media(fileId=file_id, supportsAllDrives=True)
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp_root = Path(tmp_dir)

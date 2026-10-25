@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,8 @@ from domain_models import (
     TableCatalogMeta,
     resolve_category_for_table,
 )
+
+_JST = timezone(timedelta(hours=9))
 
 
 class DatabaseConnectionError(Exception):
@@ -286,15 +288,15 @@ class HealthConnectDbEngine:
         params: list[Any] = []
 
         if filters.start_date is not None:
-            # Start of day in UTC epoch millis
-            start_dt = datetime.combine(filters.start_date, datetime.min.time(), tzinfo=UTC)
+            # Start of day in JST epoch millis
+            start_dt = datetime.combine(filters.start_date, datetime.min.time(), tzinfo=_JST)
             start_ms = int(start_dt.timestamp() * 1000)
             clauses.append(f'"{column_name}" >= ?')
             params.append(start_ms)
 
         if filters.end_date is not None:
-            # End of day in UTC epoch millis
-            end_dt = datetime.combine(filters.end_date, datetime.max.time(), tzinfo=UTC)
+            # End of day in JST epoch millis
+            end_dt = datetime.combine(filters.end_date, datetime.max.time(), tzinfo=_JST)
             end_ms = int(end_dt.timestamp() * 1000)
             clauses.append(f'"{column_name}" <= ?')
             params.append(end_ms)

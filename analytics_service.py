@@ -35,15 +35,31 @@ class HealthConnectAnalyticsService:
         self._engine = db_engine
 
     def get_database_date_range(self) -> tuple[datetime.date | None, datetime.date | None]:
-        """Determine min and max dates available across primary activity/vital records.
+        """Determine min and max dates available across primary activity/vital records in JST.
 
         Returns:
             Tuple of (earliest_date, latest_date).
         """
-        query = """
-            SELECT min(start_time), max(start_time) FROM steps_record_table
-            WHERE start_time IS NOT NULL AND start_time > 0;
-        """
+        # Primary candidate tables with their respective epoch millis column
+        candidates: list[tuple[str, str]] = [
+            ("steps_record_table", "start_time"),
+            ("sleep_session_record_table", "start_time"),
+            ("weight_record_table", "time"),
+            ("heart_rate_record_series_table", "epoch_millis"),
+            ("distance_record_table", "start_time"),
+            ("active_calories_burned_record_table", "start_time"),
+            ("exercise_session_record_table", "start_time"),
+        ]
+        available_tables = set(self._engine.get_all_table_names())
+        union_queries = [
+            f'SELECT min("{col}") AS min_t, max("{col}") AS max_t FROM "{tbl}" WHERE "{col}" IS NOT NULL AND "{col}" > 0'
+            for tbl, col in candidates
+            if tbl in available_tables
+        ]
+        if not union_queries:
+            return None, None
+
+        query = f"SELECT min(min_t), max(max_t) FROM ({' UNION ALL '.join(union_queries)});"
         df = self._engine.execute_query(query)
         if df.empty or df.iloc[0, 0] is None:
             return None, None
@@ -60,8 +76,14 @@ class HealthConnectAnalyticsService:
         except ValueError, TypeError:
             max_ms = None
 
-        min_dt = self._engine.epoch_millis_to_dt(min_ms)
-        max_dt = self._engine.epoch_millis_to_dt(max_ms)
+        # Convert epoch millis to JST (+09:00) date to align with daily grouping
+        jst = datetime.timezone(datetime.timedelta(hours=9))
+        min_dt = (
+            datetime.datetime.fromtimestamp(min_ms / 1000.0, tz=jst) if min_ms is not None else None
+        )
+        max_dt = (
+            datetime.datetime.fromtimestamp(max_ms / 1000.0, tz=jst) if max_ms is not None else None
+        )
 
         start_d = min_dt.date() if min_dt else None
         end_d = max_dt.date() if max_dt else None

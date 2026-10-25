@@ -103,6 +103,8 @@ def render_drive_sync_sidebar() -> None:
                 st.success(f"✅ {result.message} (マージ件数: {result.total_rows_merged} 件)")
                 st.toast(f"同期成功: 新規 {result.total_rows_merged} 件を追加しました", icon="✅")
                 st.cache_data.clear()
+                st.session_state.pop("active_filter_params", None)
+                st.session_state.pop("active_period_caption", None)
                 st.rerun()
             else:
                 st.error(

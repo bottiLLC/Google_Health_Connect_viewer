@@ -125,7 +125,7 @@ def test_epoch_millis_to_dt() -> None:
 
 
 def test_build_time_filter_clause() -> None:
-    """Verify time filter SQL WHERE fragment construction."""
+    """Verify time filter SQL WHERE fragment construction with JST alignment."""
     filters = DashboardFilterParams(
         start_date=datetime.date(2025, 6, 1),
         end_date=datetime.date(2025, 6, 30),
@@ -134,6 +134,8 @@ def test_build_time_filter_clause() -> None:
     assert 'AND "start_time" >=' in clause
     assert 'AND "start_time" <=' in clause
     assert len(params) == 2
+    # 2025-06-01 00:00:00 JST -> 2025-05-31 15:00:00 UTC (1748703600000 ms)
+    assert params[0] == 1748703600000
 
     # Empty filters
     empty_clause, empty_params = HealthConnectDbEngine.build_time_filter_clause(
