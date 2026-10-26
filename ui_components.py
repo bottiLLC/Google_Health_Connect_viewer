@@ -102,7 +102,10 @@ def render_drive_sync_sidebar() -> None:
 
             if result.success:
                 st.success(f"✅ {result.message} (マージ件数: {result.total_rows_merged} 件)")
-                st.toast(f"同期成功: 新規 {result.total_rows_merged} 件を追加しました", icon="✅")
+                st.toast(
+                    f"同期成功: 新規 {result.total_rows_merged} 件を追加しました",
+                    icon=":material/check_circle:",
+                )
                 st.cache_data.clear()
                 st.session_state.pop("active_filter_params", None)
                 st.session_state.pop("active_period_caption", None)
@@ -566,7 +569,7 @@ def render_route_map(points: Sequence[GpsRoutePoint]) -> None:
         tooltip={"text": "運動移動ルート"},
         map_style="mapbox://styles/mapbox/dark-v10",
     )
-    st.pydeck_chart(deck)
+    st.pydeck_chart(deck, width="stretch")
 
 
 def render_schema_table(columns: Sequence[ColumnMeta]) -> None:

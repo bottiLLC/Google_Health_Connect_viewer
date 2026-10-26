@@ -214,10 +214,12 @@ def test_render_drive_sync_sidebar_triggers() -> None:
         mock_client = mock_client_cls.return_value
         mock_client.has_credentials.return_value = True
         mock_client.has_token.return_value = True
-        mock_client.find_latest_sqlite_file.return_value = MagicMock(
+        mock_client.find_latest_backup_file.return_value = MagicMock(
             file_id="fid_123", name="test.db", modified_time=datetime.datetime.now(datetime.UTC)
         )
-        mock_client.download_file_to_temp.return_value.__enter__.return_value = Path("/tmp/test.db")
+        mock_client.download_and_extract_db.return_value.__enter__.return_value = Path(
+            "/tmp/test.db"
+        )
 
         with patch("ui_components.SqliteDatabaseMerger") as mock_merger_cls:
             mock_merger = mock_merger_cls.return_value
@@ -453,3 +455,17 @@ def test_ban_use_container_width_ast() -> None:
                             f"{py_file.name}:{node.lineno} uses deprecated 'use_container_width'"
                         )
     assert not violations, f"Found use_container_width usages: {violations}"
+
+
+def test_streamlit_dependency_version_spec() -> None:
+    """Verify pyproject.toml specifies streamlit >= 1.66.1."""
+    import tomllib
+
+    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    deps = data.get("project", {}).get("dependencies", [])
+    streamlit_dep = next((d for d in deps if d.startswith("streamlit")), None)
+    assert streamlit_dep is not None, "streamlit dependency missing in pyproject.toml"
+    assert ">=1.66.1" in streamlit_dep, (
+        f"streamlit constraint not matching >=1.66.1: {streamlit_dep}"
+    )
