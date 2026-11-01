@@ -413,6 +413,7 @@ class DriveSyncResult(BaseModel):
         default_factory=lambda: datetime.datetime.now(datetime.UTC)
     )
     downloaded_file_name: str | None = None
+    remote_modified_time: datetime.datetime | None = None
     total_rows_merged: int = 0
     table_stats: list[TableMergeStat] = Field(default_factory=list)
     backup_zip_path: str | None = None

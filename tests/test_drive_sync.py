@@ -18,6 +18,7 @@ from drive_sync import (
     GoogleDriveSyncClient,
     extract_sqlite_from_zip,
     is_sqlite_database_file,
+    normalize_drive_folder_id,
 )
 
 
@@ -502,3 +503,102 @@ def test_download_and_extract_db_with_raw_db_payload() -> None:
             assert raw_path.read_bytes() == _SQLITE_HEADER + b"raw database content"
 
         assert not raw_path.exists()
+
+
+def test_normalize_drive_folder_id() -> None:
+    """Verify various URL formats and raw IDs are properly normalized."""
+    assert normalize_drive_folder_id("") == ""
+    assert normalize_drive_folder_id("   ") == ""
+    assert normalize_drive_folder_id("  folder123  ") == "folder123"
+    assert (
+        normalize_drive_folder_id(
+            "https://drive.google.com/drive/folders/1a2B3c4D5e_F6g-7h8i9j?usp=sharing"
+        )
+        == "1a2B3c4D5e_F6g-7h8i9j"
+    )
+    assert (
+        normalize_drive_folder_id("https://drive.google.com/drive/u/0/folders/1xyzABC-123456")
+        == "1xyzABC-123456"
+    )
+    assert (
+        normalize_drive_folder_id("https://drive.google.com/open?id=1xyzABC-123456")
+        == "1xyzABC-123456"
+    )
+
+
+def test_extract_sqlite_from_nested_zip() -> None:
+    """Verify recursive extraction when a ZIP contains another ZIP."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        inner_zip = tmp_path / "inner.zip"
+        outer_zip = tmp_path / "outer.zip"
+        extract_dir = tmp_path / "extracted"
+
+        # Create inner zip with sqlite file
+        with zipfile.ZipFile(inner_zip, "w") as zf_inner:
+            zf_inner.writestr("test.db", _SQLITE_HEADER + b"nested sqlite payload")
+
+        # Create outer zip containing inner zip
+        with zipfile.ZipFile(outer_zip, "w") as zf_outer:
+            zf_outer.write(inner_zip, arcname="nested_backup.zip")
+
+        result_path = extract_sqlite_from_zip(outer_zip, extract_dir)
+        assert result_path.exists()
+        assert result_path.name == "test.db"
+        assert result_path.read_bytes() == _SQLITE_HEADER + b"nested sqlite payload"
+
+
+def test_find_latest_backup_file_searches_subfolders() -> None:
+    """Verify find_latest_backup_file traverses subfolders to discover newest backup."""
+    client = GoogleDriveSyncClient()
+    mock_service = MagicMock()
+    mock_files = MagicMock()
+    mock_service.files.return_value = mock_files
+
+    # Top-level returns an old file and a subfolder
+    top_level_res = {
+        "files": [
+            {
+                "id": "old_file",
+                "name": "old_backup.zip",
+                "modifiedTime": "2026-10-01T10:00:00Z",
+                "size": 1000,
+                "mimeType": "application/zip",
+            },
+            {
+                "id": "subfolder_id_1",
+                "name": "Sync2026",
+                "modifiedTime": "2026-10-05T10:00:00Z",
+                "size": 0,
+                "mimeType": "application/vnd.google-apps.folder",
+            },
+        ]
+    }
+    # Subfolder returns a newer backup
+    subfolder_res = {
+        "files": [
+            {
+                "id": "latest_sub_file",
+                "name": "latest_export.db",
+                "modifiedTime": "2026-10-10T12:00:00Z",
+                "size": 5000,
+                "mimeType": "application/x-sqlite3",
+            }
+        ]
+    }
+
+    mock_list = MagicMock()
+    # First call: top-level; Second call: subfolder
+    mock_list.execute.side_effect = [top_level_res, subfolder_res]
+    mock_files.list.return_value = mock_list
+
+    with patch.object(client, "get_drive_service", return_value=mock_service):
+        meta = client.find_latest_backup_file(
+            "https://drive.google.com/drive/folders/root_folder_id"
+        )
+        assert meta.file_id == "latest_sub_file"
+        assert meta.name == "latest_export.db"
+        assert meta.size_bytes == 5000
+        assert meta.modified_time.year == 2026
+        assert meta.modified_time.month == 10
+        assert meta.modified_time.day == 10

@@ -298,47 +298,54 @@ def test_app_settings_screen_save_interaction() -> None:
 
     from streamlit.testing.v1 import AppTest
 
-    at = AppTest.from_file(
-        str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
-    )
-    at.run()
-    assert not at.exception
+    from settings_manager import _SETTINGS_FILE, load_dashboard_settings
 
-    # Switch view mode to Settings screen
-    at.radio(key="app_view_mode").set_value("⚙️ 設定画面").run()
-    assert not at.exception
+    orig_content = _SETTINGS_FILE.read_text(encoding="utf-8") if _SETTINGS_FILE.exists() else None
+    try:
+        at = AppTest.from_file(
+            str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
+        )
+        at.run()
+        assert not at.exception
 
-    # Click "最小構成" preset button
-    min_btn = next((b for b in at.button if "最小構成" in b.label), None)
-    assert min_btn is not None
-    min_btn.click().run()
-    assert not at.exception
-    assert len(at.success) > 0
-    assert "最小構成" in at.success[0].value
+        # Switch view mode to Settings screen
+        at.radio(key="app_view_mode").set_value("⚙️ 設定画面").run()
+        assert not at.exception
 
-    # Set Google Drive folder ID in settings screen
-    folder_input = at.text_input(key="settings_drive_folder_id_input")
-    assert folder_input is not None
-    folder_input.set_value("drive_folder_abc123").run()
-    assert not at.exception
+        # Click "最小構成" preset button
+        min_btn = next((b for b in at.button if "最小構成" in b.label), None)
+        assert min_btn is not None
+        min_btn.click().run()
+        assert not at.exception
+        assert len(at.success) > 0
+        assert "最小構成" in at.success[0].value
 
-    # Click "設定を保存して適用" button
-    save_btn = next((b for b in at.button if "設定を保存して適用" in b.label), None)
-    assert save_btn is not None
-    save_btn.click().run()
-    assert not at.exception
-    assert len(at.success) > 0
-    assert "設定を保存して適用しました" in at.success[0].value
+        # Set Google Drive folder ID in settings screen
+        folder_input = at.text_input(key="settings_drive_folder_id_input")
+        assert folder_input is not None
+        folder_input.set_value("drive_folder_abc123").run()
+        assert not at.exception
 
-    # Verify settings persisted with drive_folder_id
-    from settings_manager import load_dashboard_settings
+        # Click "設定を保存して適用" button
+        save_btn = next((b for b in at.button if "設定を保存して適用" in b.label), None)
+        assert save_btn is not None
+        save_btn.click().run()
+        assert not at.exception
+        assert len(at.success) > 0
+        assert "設定を保存して適用しました" in at.success[0].value
 
-    persisted = load_dashboard_settings()
-    assert persisted.drive_folder_id == "drive_folder_abc123"
+        # Verify settings persisted with drive_folder_id
+        persisted = load_dashboard_settings()
+        assert persisted.drive_folder_id == "drive_folder_abc123"
 
-    # Switch back to dashboard view and verify tabs render without exception
-    at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
-    assert not at.exception
+        # Switch back to dashboard view and verify tabs render without exception
+        at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
+        assert not at.exception
+    finally:
+        if orig_content is not None:
+            _SETTINGS_FILE.write_text(orig_content, encoding="utf-8")
+        elif _SETTINGS_FILE.exists():
+            _SETTINGS_FILE.unlink()
 
 
 def test_app_summary_tab_all_excerpt_charts_render() -> None:
@@ -350,35 +357,43 @@ def test_app_summary_tab_all_excerpt_charts_render() -> None:
     from streamlit.testing.v1 import AppTest
 
     from domain_models import SummaryItemKey
+    from settings_manager import _SETTINGS_FILE
 
-    at = AppTest.from_file(
-        str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
-    )
-    at.run()
-    assert not at.exception
+    orig_content = _SETTINGS_FILE.read_text(encoding="utf-8") if _SETTINGS_FILE.exists() else None
+    try:
+        at = AppTest.from_file(
+            str(Path(__file__).resolve().parent.parent / "app.py"), default_timeout=30
+        )
+        at.run()
+        assert not at.exception
 
-    # Switch to Settings screen
-    at.radio(key="app_view_mode").set_value("⚙️ 設定画面").run()
-    assert not at.exception
+        # Switch to Settings screen
+        at.radio(key="app_view_mode").set_value("⚙️ 設定画面").run()
+        assert not at.exception
 
-    # Select all summary items (metrics + excerpt charts)
-    all_summary_keys = [k.value for k in SummaryItemKey]
-    ms = at.multiselect(key="settings_summary_items_multiselect")
-    for key in all_summary_keys:
-        if key not in ms.value:
-            ms.select(key)
-    ms.run()
-    assert not at.exception
+        # Select all summary items (metrics + excerpt charts)
+        all_summary_keys = [k.value for k in SummaryItemKey]
+        ms = at.multiselect(key="settings_summary_items_multiselect")
+        for key in all_summary_keys:
+            if key not in ms.value:
+                ms.select(key)
+        ms.run()
+        assert not at.exception
 
-    # Save settings
-    save_btn = next((b for b in at.button if "設定を保存して適用" in b.label), None)
-    assert save_btn is not None
-    save_btn.click().run()
-    assert not at.exception
+        # Save settings
+        save_btn = next((b for b in at.button if "設定を保存して適用" in b.label), None)
+        assert save_btn is not None
+        save_btn.click().run()
+        assert not at.exception
 
-    # Switch back to Dashboard view
-    at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
-    assert not at.exception
+        # Switch back to Dashboard view
+        at.radio(key="app_view_mode").set_value("📊 ダッシュボード").run()
+        assert not at.exception
+    finally:
+        if orig_content is not None:
+            _SETTINGS_FILE.write_text(orig_content, encoding="utf-8")
+        elif _SETTINGS_FILE.exists():
+            _SETTINGS_FILE.unlink()
 
 
 def test_app_dashboard_filter_form_submission() -> None:

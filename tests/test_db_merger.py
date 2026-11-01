@@ -223,3 +223,130 @@ def test_get_writable_columns_and_has_pk() -> None:
     assert has_pk_1 is True
     assert has_pk_2 is False
     assert has_pk_3 is True
+
+
+def test_merge_resolves_row_id_collision_for_records_with_unique_uuid() -> None:
+    """Verify that records with row_id=1 in temp DB get auto-incremented in master if uuid is new."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dir_path = Path(tmp_dir)
+        master_path = dir_path / "master.db"
+        temp_path = dir_path / "temp.db"
+
+        # Create master with row_id=1, uuid='uuid_old'
+        m_conn = sqlite3.connect(str(master_path))
+        m_conn.execute(
+            "CREATE TABLE steps_record_table (row_id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, count INT);"
+        )
+        m_conn.execute("INSERT INTO steps_record_table VALUES (1, 'uuid_old', 100);")
+        m_conn.commit()
+        m_conn.close()
+
+        # Temp DB export restarts row_id at 1, but has new record with uuid='uuid_new'
+        t_conn = sqlite3.connect(str(temp_path))
+        t_conn.execute(
+            "CREATE TABLE steps_record_table (row_id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, count INT);"
+        )
+        t_conn.execute(
+            "INSERT INTO steps_record_table VALUES (1, 'uuid_old', 100), (2, 'uuid_new', 200);"
+        )
+        t_conn.commit()
+        t_conn.close()
+
+        merger = SqliteDatabaseMerger(master_path)
+        result = merger.merge_from_temp_db(temp_path, skip_pre_backup=True)
+
+        assert result.success is True
+        assert result.total_rows_merged == 1
+
+        check_conn = sqlite3.connect(str(master_path))
+        rows = check_conn.execute(
+            "SELECT row_id, uuid, count FROM steps_record_table ORDER BY row_id;"
+        ).fetchall()
+        check_conn.close()
+
+        assert len(rows) == 2
+        assert rows[0] == (1, "uuid_old", 100)
+        assert rows[1] == (2, "uuid_new", 200)
+
+
+def test_merge_remaps_child_table_parent_key_via_uuid() -> None:
+    """Verify child tables (sleep_stages_table) have parent_key remapped to master parent row_id."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dir_path = Path(tmp_dir)
+        master_path = dir_path / "master.db"
+        temp_path = dir_path / "temp.db"
+
+        # Master has parent at row_id=10
+        m_conn = sqlite3.connect(str(master_path))
+        m_conn.execute(
+            "CREATE TABLE sleep_session_record_table (row_id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, notes TEXT);"
+        )
+        m_conn.execute("CREATE TABLE sleep_stages_table (parent_key INTEGER, stage_type INTEGER);")
+        m_conn.execute("INSERT INTO sleep_session_record_table VALUES (10, 'sess_1', 'old');")
+        m_conn.execute("INSERT INTO sleep_stages_table VALUES (10, 1);")
+        m_conn.commit()
+        m_conn.close()
+
+        # Temp has parent at row_id=1 (same sess_1) and row_id=2 (new sess_2)
+        t_conn = sqlite3.connect(str(temp_path))
+        t_conn.execute(
+            "CREATE TABLE sleep_session_record_table (row_id INTEGER PRIMARY KEY, uuid TEXT UNIQUE, notes TEXT);"
+        )
+        t_conn.execute("CREATE TABLE sleep_stages_table (parent_key INTEGER, stage_type INTEGER);")
+        t_conn.execute(
+            "INSERT INTO sleep_session_record_table VALUES (1, 'sess_1', 'old'), (2, 'sess_2', 'new');"
+        )
+        # Stages: (1, 1) is already in master; (1, 2) is new stage for sess_1; (2, 3) is stage for sess_2
+        t_conn.execute("INSERT INTO sleep_stages_table VALUES (1, 1), (1, 2), (2, 3);")
+        t_conn.commit()
+        t_conn.close()
+
+        merger = SqliteDatabaseMerger(master_path)
+        result = merger.merge_from_temp_db(temp_path, skip_pre_backup=True)
+
+        assert result.success is True
+
+        check_conn = sqlite3.connect(str(master_path))
+        parents = check_conn.execute(
+            "SELECT row_id, uuid FROM sleep_session_record_table ORDER BY row_id;"
+        ).fetchall()
+        stages = check_conn.execute(
+            "SELECT parent_key, stage_type FROM sleep_stages_table ORDER BY parent_key, stage_type;"
+        ).fetchall()
+        check_conn.close()
+
+        assert parents == [(10, "sess_1"), (11, "sess_2")]
+        # Stage (1, 1) deduplicated; (1, 2) mapped to 10; (2, 3) mapped to 11
+        assert stages == [(10, 1), (10, 2), (11, 3)]
+
+
+def test_merge_with_replace_master_true() -> None:
+    """Verify replace_master=True completely overwrites master DB with temp DB."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        dir_path = Path(tmp_dir)
+        master_path = dir_path / "master.db"
+        temp_path = dir_path / "temp.db"
+
+        m_conn = sqlite3.connect(str(master_path))
+        m_conn.execute("CREATE TABLE sample (id INT PRIMARY KEY, val TEXT);")
+        m_conn.execute("INSERT INTO sample VALUES (1, 'old');")
+        m_conn.commit()
+        m_conn.close()
+
+        t_conn = sqlite3.connect(str(temp_path))
+        t_conn.execute("CREATE TABLE sample (id INT PRIMARY KEY, val TEXT);")
+        t_conn.execute("INSERT INTO sample VALUES (1, 'replaced'), (2, 'added');")
+        t_conn.commit()
+        t_conn.close()
+
+        merger = SqliteDatabaseMerger(master_path)
+        result = merger.merge_from_temp_db(temp_path, skip_pre_backup=True, replace_master=True)
+
+        assert result.success is True
+        assert "全置換" in result.message
+
+        check_conn = sqlite3.connect(str(master_path))
+        rows = check_conn.execute("SELECT id, val FROM sample ORDER BY id;").fetchall()
+        check_conn.close()
+
+        assert rows == [(1, "replaced"), (2, "added")]

@@ -16,6 +16,7 @@ from domain_models import (
     DailyActivitySummary,
     DailySleepSummary,
     DashboardSettings,
+    DriveSyncResult,
     GpsRoutePoint,
     SleepStageInterval,
 )
@@ -24,6 +25,7 @@ from drive_sync import (
     DriveFileNotFoundError,
     DriveSyncError,
     GoogleDriveSyncClient,
+    normalize_drive_folder_id,
 )
 from settings_manager import load_dashboard_settings, save_dashboard_settings
 
@@ -39,17 +41,42 @@ def render_drive_sync_sidebar() -> None:
         value=settings.drive_folder_id,
         help="SQLiteバックアップが格納されている Google Drive フォルダの ID",
     )
-    if folder_id != settings.drive_folder_id and st.button(
+    normalized_input = normalize_drive_folder_id(folder_id)
+    if normalized_input != settings.drive_folder_id and st.button(
         "フォルダ ID を保存", type="secondary", icon=":material/save:", width="stretch"
     ):
         new_settings = DashboardSettings(
             visible_tabs=settings.visible_tabs,
             visible_summary_items=settings.visible_summary_items,
-            drive_folder_id=folder_id.strip(),
+            drive_folder_id=normalized_input,
         )
         save_dashboard_settings(new_settings)
+        st.session_state["dashboard_settings"] = new_settings
         st.success("フォルダ ID を保存しました。")
         st.rerun()
+
+    # Display persistent status card from previous sync if available
+    last_res: DriveSyncResult | None = st.session_state.get("last_drive_sync_result")
+    if last_res is not None:
+        if last_res.success:
+            st.success(f"前回の同期: {last_res.message}")
+            with st.expander("同期詳細", expanded=False):
+                st.caption(f"📁 ファイル: {last_res.downloaded_file_name or 'N/A'}")
+                if last_res.remote_modified_time:
+                    st.caption(
+                        f"🕒 Drive更新日時: {last_res.remote_modified_time.strftime('%Y-%m-%d %H:%M')}"
+                    )
+                st.caption(f"➕ 追加件数: {last_res.total_rows_merged} 件")
+                if last_res.table_stats:
+                    top_stats = sorted(
+                        last_res.table_stats, key=lambda s: s.rows_inserted, reverse=True
+                    )[:5]
+                    st.caption(
+                        "📊 上位更新テーブル: "
+                        + ", ".join(f"{s.table_name}(+{s.rows_inserted})" for s in top_stats)
+                    )
+        else:
+            st.error(f"前回の同期エラー: {last_res.message}")
 
     client = GoogleDriveSyncClient()
     if not client.has_credentials():
@@ -73,10 +100,20 @@ def render_drive_sync_sidebar() -> None:
         disabled=not confirm_sync,
         width="stretch",
     ):
-        target_folder = folder_id.strip() or settings.drive_folder_id.strip()
+        target_folder = normalize_drive_folder_id(folder_id or settings.drive_folder_id)
         if not target_folder:
             st.warning("⚠️ Google Drive フォルダ ID を設定してください。")
             return
+
+        # Auto-persist normalized folder ID if changed
+        if target_folder != settings.drive_folder_id:
+            new_settings = DashboardSettings(
+                visible_tabs=settings.visible_tabs,
+                visible_summary_items=settings.visible_summary_items,
+                drive_folder_id=target_folder,
+            )
+            save_dashboard_settings(new_settings)
+            st.session_state["dashboard_settings"] = new_settings
 
         if not client.has_credentials():
             st.error(
@@ -101,7 +138,17 @@ def render_drive_sync_sidebar() -> None:
                     result = merger.merge_from_temp_db(temp_db, source_file_name=latest_file.name)
 
             if result.success:
-                st.success(f"✅ {result.message} (マージ件数: {result.total_rows_merged} 件)")
+                res_with_meta = DriveSyncResult(
+                    success=result.success,
+                    message=result.message,
+                    timestamp=result.timestamp,
+                    downloaded_file_name=latest_file.name,
+                    remote_modified_time=latest_file.modified_time,
+                    total_rows_merged=result.total_rows_merged,
+                    table_stats=result.table_stats,
+                    backup_zip_path=result.backup_zip_path,
+                )
+                st.session_state["last_drive_sync_result"] = res_with_meta
                 st.toast(
                     f"同期成功: 新規 {result.total_rows_merged} 件を追加しました",
                     icon=":material/check_circle:",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import zipfile
 from collections.abc import Iterator
@@ -43,6 +44,31 @@ class DriveAuthError(DriveSyncError):
 
 class DriveFileNotFoundError(DriveSyncError):
     """Raised when no valid SQLite export file is found in target Google Drive folder."""
+
+
+def normalize_drive_folder_id(raw_input: str) -> str:
+    """Normalize raw user input or Google Drive folder URL into clean folder ID.
+
+    Args:
+        raw_input: Raw string pasted by user (URL or folder ID).
+
+    Returns:
+        Clean Google Drive folder identifier.
+    """
+    cleaned = raw_input.strip()
+    if not cleaned:
+        return ""
+    # Match /folders/([a-zA-Z0-9_-]+)
+    match_folders = re.search(r"/folders/([a-zA-Z0-9_-]+)", cleaned)
+    if match_folders:
+        return match_folders.group(1)
+    # Match id=([a-zA-Z0-9_-]+)
+    match_param = re.search(r"[?&]id=([a-zA-Z0-9_-]+)", cleaned)
+    if match_param:
+        return match_param.group(1)
+    # Strip URL fragments or trailing queries
+    cleaned = cleaned.split("?")[0].split("#")[0].rstrip("/")
+    return cleaned
 
 
 def is_sqlite_database_file(file_path: Path) -> bool:
@@ -98,12 +124,27 @@ def extract_sqlite_from_zip(zip_path: Path, extract_dir: Path) -> Path:
                             candidate_entry = name
                             break
 
+        # 3. 入れ子 ZIP アーカイブ (.zip) の探索
+        if candidate_entry is None:
+            for name in zf.namelist():
+                lower_name = name.lower()
+                if not lower_name.endswith("/") and lower_name.endswith(".zip"):
+                    candidate_entry = name
+                    break
+
         if candidate_entry is None:
             raise DriveFileNotFoundError(
                 f"ZIP アーカイブ ({zip_path.name}) 内に有効な SQLite ファイルが見つかりません。"
             )
 
         extracted_path = Path(zf.extract(candidate_entry, path=str(extract_dir))).resolve()
+
+        # 入れ子 ZIP の場合は再帰展開
+        if extracted_path.name.lower().endswith(".zip") and zipfile.is_zipfile(extracted_path):
+            nested_dir = extract_dir / "nested"
+            nested_dir.mkdir(parents=True, exist_ok=True)
+            return extract_sqlite_from_zip(extracted_path, nested_dir)
+
         return extracted_path
 
 
@@ -248,8 +289,11 @@ class GoogleDriveSyncClient:
     def find_latest_backup_file(self, folder_id: str) -> DriveFileMeta:
         """Find the most recently modified backup file (ZIP or SQLite) in specified Google Drive folder.
 
+        Supports raw folder IDs, Google Drive folder URLs, and searches both direct children
+        and immediate subfolders for candidate backup archives.
+
         Args:
-            folder_id: Google Drive target folder identifier string.
+            folder_id: Google Drive target folder identifier or URL string.
 
         Returns:
             DriveFileMeta for the latest backup file.
@@ -259,7 +303,7 @@ class GoogleDriveSyncClient:
             DriveFileNotFoundError: If no candidate file is found.
             DriveSyncError: If Drive API call fails.
         """
-        clean_folder_id = folder_id.strip()
+        clean_folder_id = normalize_drive_folder_id(folder_id)
         if not clean_folder_id:
             raise ValueError("Google Drive フォルダ ID が指定されていません。")
 
@@ -273,7 +317,7 @@ class GoogleDriveSyncClient:
                 .list(
                     q=query,
                     orderBy="modifiedTime desc",
-                    pageSize=20,
+                    pageSize=50,
                     fields="files(id, name, modifiedTime, size, mimeType)",
                     supportsAllDrives=True,
                     includeItemsFromAllDrives=True,
@@ -283,15 +327,48 @@ class GoogleDriveSyncClient:
         except Exception as e:
             raise DriveSyncError(f"Google Drive フォルダ走査に失敗しました: {e!s}") from e
 
-        files: list[dict[str, Any]] = results.get("files", [])
-        if not files:
+        all_files: list[dict[str, Any]] = list(results.get("files", []))
+
+        # Check subfolders (up to 5 recent subfolders)
+        subfolders = [
+            f for f in all_files if f.get("mimeType") == "application/vnd.google-apps.folder"
+        ][:5]
+        for subf in subfolders:
+            subf_id = str(subf.get("id", ""))
+            if not subf_id:
+                continue
+            sub_query = f"'{subf_id}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'"
+            try:
+                sub_res: dict[str, Any] = (
+                    service.files()
+                    .list(
+                        q=sub_query,
+                        orderBy="modifiedTime desc",
+                        pageSize=20,
+                        fields="files(id, name, modifiedTime, size, mimeType)",
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True,
+                    )
+                    .execute()
+                )
+                all_files.extend(sub_res.get("files", []))
+            except Exception as sub_err:
+                logger.warning(
+                    "サブフォルダ走査をスキップしました", subfolder_id=subf_id, error=str(sub_err)
+                )
+
+        # Filter out folder entries
+        non_folder_files = [
+            f for f in all_files if f.get("mimeType") != "application/vnd.google-apps.folder"
+        ]
+        if not non_folder_files:
             raise DriveFileNotFoundError(
                 f"指定フォルダ (ID: {clean_folder_id}) 内にファイルが見つかりません。"
             )
 
         # Filter candidate backup files: prefer .zip, .db, .sqlite or matching mimeTypes
-        candidate: dict[str, Any] | None = None
-        for file_item in files:
+        candidates: list[dict[str, Any]] = []
+        for file_item in non_folder_files:
             name = str(file_item.get("name", "")).lower()
             mime = str(file_item.get("mimeType", "")).lower()
             if (
@@ -301,23 +378,27 @@ class GoogleDriveSyncClient:
                 or name.endswith(".sqlite")
                 or "sqlite" in mime
             ):
-                candidate = file_item
-                break
+                candidates.append(file_item)
 
-        if candidate is None:
-            # Fallback to the latest file in folder
-            candidate = files[0]
+        if not candidates:
+            # Fallback to all non-folder files if no explicit archive extension found
+            candidates = non_folder_files
 
-        file_id = str(candidate["id"])
-        name = str(candidate["name"])
-        raw_mtime = str(candidate.get("modifiedTime", ""))
-        size_bytes = int(candidate.get("size", 0))
+        # Sort candidates by parsed modifiedTime desc
+        def parse_mtime(item: dict[str, Any]) -> datetime:
+            raw_mtime = str(item.get("modifiedTime", ""))
+            try:
+                return datetime.fromisoformat(raw_mtime.replace("Z", "+00:00"))
+            except ValueError:
+                return datetime.fromtimestamp(0, UTC)
 
-        # Parse RFC 3339 datetime
-        try:
-            mtime_dt = datetime.fromisoformat(raw_mtime.replace("Z", "+00:00"))
-        except ValueError:
-            mtime_dt = datetime.now(UTC)
+        candidates.sort(key=parse_mtime, reverse=True)
+        chosen = candidates[0]
+
+        file_id = str(chosen["id"])
+        name = str(chosen["name"])
+        size_bytes = int(chosen.get("size", 0))
+        mtime_dt = parse_mtime(chosen)
 
         return DriveFileMeta(
             file_id=file_id,
